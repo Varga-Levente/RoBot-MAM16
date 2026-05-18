@@ -371,10 +371,3 @@ A pályát:
 
 Ezután:
 - Egész éjszaka lehet tesztelni
-
----
-
-# Köszönet
-
-Köszönöm a „vén rókák" segítségét,
-akik segítettek átnézni és véglegesíteni a kiírást.
