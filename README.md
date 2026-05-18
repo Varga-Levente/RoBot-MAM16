@@ -99,6 +99,7 @@ Ez a 86 másodperc hozzáadódik a megszerzett pontokhoz.
 A kapu:
 - Egy 4 bites vizuális kódot jelenít meg
 - Közepén infravevő található
+
 ![target_image](https://www.magyarokamarson.hu/weblap2026/assets/img/gate1.png)
 ![target_gif](https://www.magyarokamarson.hu/weblap2026/assets/img/gate_code.gif)
 
@@ -226,6 +227,7 @@ A csapat több módszert is talált:
   - 50cm
 - Legszűkebb átjáró:
   - 75cm
+
 ![terrain_image](https://www.magyarokamarson.hu/weblap2026/assets/img/palya_top_800.png)
 
 A talaj:
