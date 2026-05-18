@@ -99,6 +99,8 @@ Ez a 86 másodperc hozzáadódik a megszerzett pontokhoz.
 A kapu:
 - Egy 4 bites vizuális kódot jelenít meg
 - Közepén infravevő található
+![target_image](https://www.magyarokamarson.hu/weblap2026/assets/img/gate1.png)
+![target_gif](https://www.magyarokamarson.hu/weblap2026/assets/img/gate_code.gif)
 
 Feladat:
 - A megjelenített 3 jegyű hexadecimális számot vissza kell sugározni infrával
@@ -145,6 +147,8 @@ Jel paraméterei:
   - 1200 baud
   - 8 bit
   - Paritás nélkül
+![signal_image1](https://www.magyarokamarson.hu/weblap2026/assets/img/signal1.png)
+![signal_image2](https://www.magyarokamarson.hu/weblap2026/assets/img/signal2.png)
 
 A cél:
 - Fél méterről is stabil érzékelés
@@ -221,6 +225,7 @@ A csapat több módszert is talált:
   - 50cm
 - Legszűkebb átjáró:
   - 75cm
+![terrain_image](https://www.magyarokamarson.hu/weblap2026/assets/img/palya_top_800.png)
 
 A talaj:
 - A díszaula járólap burkolata
