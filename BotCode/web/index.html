@@ -1,0 +1,62 @@
+<!DOCTYPE html>
+<html lang="hu">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>MAM16 Robot Control</title>
+  <link rel="stylesheet" href="/web/style.css">
+</head>
+<body>
+<div class="container">
+
+  <!-- Videóstream -->
+  <video id="video" autoplay muted playsinline></video>
+
+  <!-- Stream nincs overlay -->
+  <div class="no-video" id="no-video">
+    <div class="no-video-icon">📡</div>
+    <div class="no-video-text">Stream csatlakoztatása...</div>
+  </div>
+
+  <!-- Felső sáv: szerep badge + kapu kód -->
+  <div class="top-bar glass">
+    <span class="role-badge" id="role-badge">PAC-MAN</span>
+
+    <div class="gate-panel">
+      <span class="label">Kapukód</span>
+      <span class="code" id="gate-code">---</span>
+    </div>
+  </div>
+
+  <!-- Alsó bal: IR státusz + LoRa kapcsolat -->
+  <div class="bottom-bar glass">
+    <div class="ir-panel">
+      <span class="label">IR</span>
+      <span class="ir-code" id="ir-code">---</span>
+      <div class="ir-dot" id="ir-dot"></div>
+    </div>
+
+    <div style="width: 1px; height: 20px; background: var(--border);"></div>
+
+    <div class="conn-panel">
+      <div class="conn-dot" id="conn-dot"></div>
+      <span id="conn-text">Csatlakozás...</span>
+    </div>
+  </div>
+
+  <!-- Log panel (jobb alsó, ki/be csukható) -->
+  <div class="log-container" id="log-container">
+    <div class="log-header" id="log-toggle" onclick="toggleLog()">
+      <div>
+        <span class="log-title">Napló</span>
+        <span class="log-count" id="log-count">0 sor</span>
+      </div>
+      <button class="toggle-btn" id="toggle-btn">▲</button>
+    </div>
+    <div class="log-body" id="log-body"></div>
+  </div>
+
+</div>
+<script src="/web/app.js"></script>
+</body>
+</html>
