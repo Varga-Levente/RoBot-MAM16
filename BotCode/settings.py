@@ -47,13 +47,29 @@ VISION_COOLDOWN_MS       = 500   # Sikeres kódolvasás után ennyi ms-ig nem in
 # ── IR ────────────────────────────────────────────────────────────────────────
 # SFH4546 infra LED vezérlés (soros kommunikáció 38kHz vivőfrekvencián)
 
+# Adási mód:
+#   DIRECT_UART  — 1200 baud UART, külső hardver (555 IC vagy HW PWM) biztosítja a 38kHz-t
+#   CARRIER_UART — 38400 baud UART, szoftver carrier: 0xAA=burst, 0x00=csend (nincs extra hw)
+#   HW_PWM       — 1200 baud UART + Jetson Nano hardware PWM 38kHz vivő (IR_PWM_PIN-en)
+IR_MODE            = "CARRIER_UART"
+
 IR_UART_PORT       = "/dev/ttyTHS1"  # Jetson Nano hardware UART port
-IR_BAUD_RATE       = 1200            # Soros kommunikáció baudrate (verseny spec)
+IR_BAUD_RATE       = 1200            # Soros kommunikáció baudrate (DIRECT_UART és HW_PWM módban)
 IR_DATA_BITS       = 8               # Adatbitek száma
 IR_PARITY          = "N"             # Paritás: "N"=nincs, "E"=páros, "O"=páratlan
 IR_STOP_BITS       = 1               # Stop bitek száma
 IR_TIMEOUT_SEC     = 1.0             # UART időtúllépés másodpercben
 IR_MAX_TX_PER_SEC  = 2               # Maximális adások száma másodpercenként (verseny limit)
+
+# CARRIER_UART mód paraméterei
+# 4 byte @ 38400 baud ≈ 833µs ≈ 1 bit @ 1200 baud
+IR_CARRIER_BAUD    = 38400           # UART baudrate CARRIER_UART módban
+IR_CARRIER_BYTE    = 0xAA            # 10101010 bináris → ~38.4kHz burst minta
+IR_SILENCE_BYTE    = 0x00            # Csend (nincs vivő)
+IR_BYTES_PER_BIT   = 4               # Hány carrier/silence byte fedi le egy 1200 baud bitet
+
+# HW_PWM mód paraméterei (csak HW_PWM módban használt)
+IR_PWM_PIN         = 32              # Jetson Nano hardware PWM pin (BCM); -1 = külső 555 IC
 
 # ── LORA ──────────────────────────────────────────────────────────────────────
 # RFM95W LoRa modul konfiguráció (SPI) és titkosítás

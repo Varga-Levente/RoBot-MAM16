@@ -1,17 +1,17 @@
 """
 Infra LED vezérlő modul.
 
-A kapu kódot (3 hex karakter, pl. „CA6") soros UART kommunikációval küldi el.
-A 38kHz vivőfrekvenciát külső hardver (555 IC vagy GPIO PWM) biztosítja;
-ez a modul csak a soros adatjelért felelős.
+Három adási mód (settings.IR_MODE):
+  DIRECT_UART  — 1200 baud UART, külső hardver biztosítja a 38kHz vivőt (555 IC / HW PWM)
+  CARRIER_UART — 38400 baud UART, szoftver carrier trick: minden 1200 baud bit 4 byte-ra
+                 terjesztve ki; 0xAA (10101010) = ~38.4kHz burst, 0x00 = csend
+  HW_PWM       — 1200 baud UART + Jetson Nano sysfs PWM 38kHz vivő IR_PWM_PIN-en
 
 Verseny korlát: maximum 2 adás / másodperc (token bucket alapú rate limiter).
 
-Adatformátum (verseny spec):
-  - 1200 baud
-  - 8 adatbit
-  - Paritás nélkül
-  - 1 stop bit
+Verseny adatformátum (spec):
+  - 1200 baud (logikai szint), 8N1
+  - Payload: ASCII hex karakterek + '\\n' lezáró
 """
 
 import asyncio
@@ -34,18 +34,56 @@ class IRTransmitter:
             return
         try:
             import serial
+            baud = (settings.IR_CARRIER_BAUD
+                    if settings.IR_MODE == "CARRIER_UART"
+                    else settings.IR_BAUD_RATE)
             self._serial = serial.Serial(
                 port     = settings.IR_UART_PORT,
-                baudrate = settings.IR_BAUD_RATE,
+                baudrate = baud,
                 bytesize = settings.IR_DATA_BITS,
                 parity   = settings.IR_PARITY,
                 stopbits = settings.IR_STOP_BITS,
                 timeout  = settings.IR_TIMEOUT_SEC,
             )
-            log.info(f"IR UART megnyitva: {settings.IR_UART_PORT} @ {settings.IR_BAUD_RATE} baud")
+            log.info(f"IR UART megnyitva: {settings.IR_UART_PORT} @ {baud} baud [{settings.IR_MODE}]")
+            if settings.IR_MODE == "HW_PWM" and settings.IR_PWM_PIN > 0:
+                self._start_hw_pwm()
         except Exception as e:
             log.error(f"IR UART megnyitási hiba: {e}")
             self._serial = None
+
+    def _start_hw_pwm(self) -> None:
+        """38kHz PWM indítása Jetson Nano sysfs PWM-en (HW_PWM mód)."""
+        try:
+            import Jetson.GPIO as GPIO
+            GPIO.setmode(GPIO.BCM)
+            GPIO.setup(settings.IR_PWM_PIN, GPIO.OUT)
+            self._pwm = GPIO.PWM(settings.IR_PWM_PIN, 38000)
+            self._pwm.start(50)  # 50% duty cycle
+            log.info(f"IR HW PWM elindítva: GPIO{settings.IR_PWM_PIN} @ 38kHz")
+        except Exception as e:
+            log.warning(f"IR HW PWM nem érhető el: {e}")
+
+    def _encode_carrier(self, code: str) -> bytes:
+        """CARRIER_UART: minden 1200 baud UART bitet IR_BYTES_PER_BIT byte-ra terjeszt ki.
+
+        Egy 1200 baud 8N1 UART frame 10 bit: [START=0] + 8 adatbit (LSB first) + [STOP=1]
+        Minden bitből IR_BYTES_PER_BIT darab byte lesz:
+          mark (1) → IR_CARRIER_BYTE  (~38.4kHz burst)
+          space (0) → IR_SILENCE_BYTE (csend)
+        """
+        n = settings.IR_BYTES_PER_BIT
+        carrier = bytes([settings.IR_CARRIER_BYTE] * n)
+        silence = bytes([settings.IR_SILENCE_BYTE] * n)
+        result  = bytearray()
+        for byte_val in (code + "\n").encode("ascii"):
+            bits = [0]  # start bit (space)
+            for i in range(8):
+                bits.append((byte_val >> i) & 1)
+            bits.append(1)  # stop bit (mark)
+            for bit in bits:
+                result += carrier if bit else silence
+        return bytes(result)
 
     def _can_transmit(self) -> bool:
         """Token bucket: ellenőrzi, hogy az IR_MAX_TX_PER_SEC korlát teljesül-e."""
@@ -66,16 +104,18 @@ class IRTransmitter:
         self._last_tx_times.append(time.monotonic())
 
         if settings.DRY_RUN or self._serial is None:
-            log.info(f"[DRY-RUN] IR küldés: {code}")
+            log.info(f"[DRY-RUN] IR küldés: {code} [{settings.IR_MODE}]")
             return True
 
         try:
-            # 3 hex karaktert 3 bájtként küldjük el (pl. "CA6" → 0xCA, 0x0A, 0x06? )
-            # Verseny spec: a hex string karaktereit ASCII-ként küldjük + '\n' lezáró
-            data = (code + "\n").encode("ascii")
+            if settings.IR_MODE == "CARRIER_UART":
+                data = self._encode_carrier(code)
+                log.debug(f"IR CARRIER_UART: {len(data)} byte @ {settings.IR_CARRIER_BAUD} baud")
+            else:
+                data = (code + "\n").encode("ascii")
             self._serial.write(data)
             self._serial.flush()
-            log.info(f"IR küldve: {code}")
+            log.info(f"IR küldve: {code} [{settings.IR_MODE}]")
             return True
         except Exception as e:
             log.error(f"IR küldési hiba: {e}")
@@ -95,6 +135,11 @@ class IRTransmitter:
             state.ir_transmitting = False
 
     def close(self) -> None:
+        if hasattr(self, "_pwm"):
+            try:
+                self._pwm.stop()
+            except Exception:
+                pass
         if self._serial and self._serial.is_open:
             self._serial.close()
 

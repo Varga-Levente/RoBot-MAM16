@@ -563,10 +563,15 @@ class IRPanel(_Panel):
         # Beállítások info
         info_sec = _section(self, "Jelenlegi beállítások")
         info_sec.master.pack(fill="x", padx=16, pady=(0, 12))
+        mode = settings.IR_MODE
+        if mode == "CARRIER_UART":
+            baud_info = f"{settings.IR_CARRIER_BAUD} baud (carrier, {settings.IR_BYTES_PER_BIT}B/bit)"
+        else:
+            baud_info = f"{settings.IR_BAUD_RATE} baud"
         info = (
+            f"Mód:         {mode}\n"
             f"UART port:   {settings.IR_UART_PORT}\n"
-            f"Baud rate:   {settings.IR_BAUD_RATE}\n"
-            f"Carrier:     {settings.IR_CARRIER_FREQ_HZ} Hz\n"
+            f"Baud rate:   {baud_info}\n"
             f"Stop bits:   {settings.IR_STOP_BITS}\n"
             f"Max TX/sec:  {settings.IR_MAX_TX_PER_SEC}"
         )
