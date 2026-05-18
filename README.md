@@ -147,6 +147,7 @@ Jel paraméterei:
   - 1200 baud
   - 8 bit
   - Paritás nélkül
+
 ![signal_image1](https://www.magyarokamarson.hu/weblap2026/assets/img/signal1.png)
 ![signal_image2](https://www.magyarokamarson.hu/weblap2026/assets/img/signal2.png)
 
