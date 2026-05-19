@@ -1,0 +1,20 @@
+# Windows fejlesztői környezet — csak a test_gui.py futtatásához
+# Használat: pip install -r requirements-windows.txt
+#
+# A hardveres csomagok (GPIO, SPI, LoRa, OLED) ki vannak hagyva —
+# a test_gui.py dry-run módban fut, ezek nem szükségesek.
+
+# ── GUI ───────────────────────────────────────────────────────────────────────
+customtkinter>=5.2.0
+
+# ── Gépi látás ────────────────────────────────────────────────────────────────
+# Windows-on opencv-python kell, nem a headless verzió!
+opencv-python>=4.9.0
+numpy>=1.24.0
+Pillow>=10.0.0
+
+# ── Titkosítás (LoRa panel crypto teszthez) ───────────────────────────────────
+pycryptodome>=3.20.0
+
+# ── Soros port (IR panel dry-run loghoz) ─────────────────────────────────────
+pyserial>=3.5
