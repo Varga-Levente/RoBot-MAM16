@@ -146,3 +146,4 @@ class ControllerWebServer:
         site = web.TCPSite(runner, settings.WEB_HOST, settings.WEB_PORT)
         await site.start()
         log.info(f"Beállítás UI: http://{settings.WEB_HOST}:{settings.WEB_PORT}")
+        await asyncio.get_event_loop().create_future()  # fut, amíg le nem állítják
