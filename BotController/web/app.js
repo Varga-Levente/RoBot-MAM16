@@ -40,11 +40,12 @@ async function pollStatus() {
     const dotG = document.getElementById('dot-gamepad');
     const dotL = document.getElementById('dot-lora');
     dotG.className = 'dot ' + (st.gamepad_connected    ? 'ok' : 'err');
-    dotL.className = 'dot ' + (st.lora_authenticated   ? 'ok' : 'err');
+    const loraOk = st.lora_hw_ok !== false;
+    dotL.className = 'dot ' + (st.lora_authenticated ? 'ok' : loraOk ? 'err' : '');
     document.getElementById('lbl-gamepad').textContent =
       'Gamepad: ' + (st.gamepad_connected  ? 'OK' : 'nincs');
     document.getElementById('lbl-lora').textContent =
-      'LoRa: '    + (st.lora_authenticated ? 'Hitelesítve' : 'Várakozás...');
+      'LoRa: ' + (st.lora_authenticated ? 'Hitelesítve' : loraOk ? 'Várakozás...' : 'Nem csatlakoztatva');
     document.getElementById('speed-badge').textContent =
       'Sebesség: ' + Math.round(st.speed_limit * 100) + '%';
 

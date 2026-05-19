@@ -46,10 +46,14 @@ class LoraSender:
 
     # ── Hardware init ────────────────────────────────────────────────────────
 
+    @property
+    def hw_available(self) -> bool:
+        return _RFM_OK
+
     def open(self) -> bool:
         if not _RFM_OK:
-            log.info("[DRY-RUN] LoraSender szimulált módban")
-            return True
+            log.warning("LoRa hardver nem elérhető (könyvtár hiányzik vagy SPI nem inicializálható)")
+            return False
         try:
             spi   = busio.SPI(board.SCK, MOSI=board.MOSI, MISO=board.MISO)
             cs    = digitalio.DigitalInOut(board.CE0)
@@ -170,8 +174,7 @@ class LoraSender:
 
     def _send_raw(self, data: bytes) -> bool:
         if not _RFM_OK or self._rfm is None:
-            log.debug(f"[DRY-RUN] LoRa küldés: {len(data)} byte")
-            return True
+            return False
         try:
             self._rfm.send(data)
             return True

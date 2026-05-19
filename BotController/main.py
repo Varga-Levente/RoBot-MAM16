@@ -23,6 +23,7 @@ from lora_sender      import LoraSender
 @dataclass
 class ControllerState:
     gamepad_connected:     bool  = False
+    lora_hw_ok:            bool  = False
     lora_authenticated:    bool  = False
     linear:                float = 0.0
     angular:               float = 0.0
@@ -64,12 +65,13 @@ async def control_loop(
 
     while True:
         # ── Handshake (vagy újra-handshake ha LoRa újrainicializálás kell) ──
-        if state.lora_reinit_requested:
+        if state.lora_hw_ok and state.lora_reinit_requested:
             log.info("LoRa újrainicializálás...")
-            await asyncio.get_event_loop().run_in_executor(None, sender.reinit)
+            ok = await asyncio.get_event_loop().run_in_executor(None, sender.reinit)
+            state.lora_hw_ok = ok
             state.lora_reinit_requested = False
 
-        if not state.lora_authenticated:
+        if state.lora_hw_ok and not state.lora_authenticated:
             log.info("LoRa handshake indítása...")
             await _handshake_loop(sender, state)
 
@@ -105,7 +107,7 @@ async def control_loop(
         if dry_run:
             if linear or angular:
                 log.debug(f"[DRY-RUN] linear={linear:.3f} angular={angular:.3f}")
-        else:
+        elif state.lora_hw_ok and state.lora_authenticated:
             if linear != 0.0 or angular != 0.0:
                 sender.send_command(linear, angular)
             # keepalive stop ~1 Hz
@@ -142,7 +144,10 @@ async def main(args: argparse.Namespace) -> None:
     webui   = ControllerWebServer(state)
 
     if not args.dry_run:
-        await asyncio.get_event_loop().run_in_executor(None, sender.open)
+        lora_ok = await asyncio.get_event_loop().run_in_executor(None, sender.open)
+        state.lora_hw_ok = lora_ok
+        if not lora_ok:
+            log.warning("LoRa hardver nem elérhető — csak gamepad + web UI mód")
 
     stop_event = asyncio.Event()
     loop = asyncio.get_running_loop()
@@ -167,7 +172,7 @@ async def main(args: argparse.Namespace) -> None:
         ctrl_task.cancel()
         web_task.cancel()
         await asyncio.gather(ctrl_task, web_task, return_exceptions=True)
-        if not args.dry_run:
+        if not args.dry_run and state.lora_hw_ok:
             sender.send_stop()
             sender.close()
         gamepad.close()

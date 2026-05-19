@@ -130,6 +130,7 @@ class ControllerWebServer:
         st = self._state
         return web.json_response({
             "gamepad_connected":  st.gamepad_connected  if st else False,
+            "lora_hw_ok":         st.lora_hw_ok         if st else False,
             "lora_authenticated": st.lora_authenticated if st else False,
             "linear":   round(st.linear,  3) if st else 0.0,
             "angular":  round(st.angular, 3) if st else 0.0,
