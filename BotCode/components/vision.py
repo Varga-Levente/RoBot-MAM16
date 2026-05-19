@@ -28,7 +28,7 @@ import asyncio
 import logging
 import time
 from enum import Enum, auto
-from typing import Optional
+from typing import Optional, Tuple
 
 import cv2
 import numpy as np
@@ -147,7 +147,7 @@ class VisionProcessor:
 
     def _find_circle_mask(
         self, frame: np.ndarray, blurred: np.ndarray
-    ) -> tuple[int, int, np.ndarray]:
+    ) -> Tuple[int, int, np.ndarray]:
         """HoughCircles alapú körkeresés. Visszaad (cx, cy, mask) tuple-t."""
         h, w = frame.shape[:2]
         mask = np.zeros((h, w), dtype=np.uint8)
