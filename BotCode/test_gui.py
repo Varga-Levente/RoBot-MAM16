@@ -448,14 +448,30 @@ class VisionPanel(_Panel):
         vh = self._video_lbl.winfo_height() or 400
         self._show_in_label(self._video_lbl, annotated, vw, vh)
 
-        # ── ROI zoom ─────────────────────────────────────────────────────
+        # ── ROI zoom — 2×2 grid annotáció ───────────────────────────────
         h, w = frame.shape[:2]
-        if rx + rw <= w and ry + rh <= h:
-            roi = annotated[ry:ry + rh, rx:rx + rw].copy()
-            # Szekció vonalak
-            sw = rw // 4
-            for i in range(1, 4):
-                cv2.line(roi, (i * sw, 0), (i * sw, rh), (100, 100, 100), 1)
+        actual_rw = min(rw, w - rx)
+        actual_rh = min(rh, h - ry)
+        if actual_rw > 0 and actual_rh > 0:
+            roi = annotated[ry:ry + actual_rh, rx:rx + actual_rw].copy()
+            mh, mw = roi.shape[:2]
+            half_h, half_w = mh // 2, mw // 2
+            grid_color = (80, 80, 80)
+            # Vízszintes és függőleges felezővonal
+            cv2.line(roi, (0, half_h), (mw, half_h), grid_color, 1)
+            cv2.line(roi, (half_w, 0), (half_w, mh), grid_color, 1)
+            # TL/TR/BL/BR feliratok + bit értékek
+            labels = [
+                ("TL", (4, 14),             (0, half_h), (0, half_w)),
+                ("TR", (half_w + 4, 14),    (0, half_h), (half_w, mw)),
+                ("BL", (4, half_h + 14),    (half_h, mh), (0, half_w)),
+                ("BR", (half_w + 4, half_h + 14), (half_h, mh), (half_w, mw)),
+            ]
+            for i, (lbl, pos, (r0, r1), (c0, c1)) in enumerate(labels):
+                bit = (digit >> (3 - i)) & 1 if digit is not None else 0
+                color = (0, 220, 80) if bit else (80, 80, 80)
+                cv2.putText(roi, f"{lbl}:{bit}", pos,
+                            cv2.FONT_HERSHEY_SIMPLEX, 0.38, color, 1)
             roi_h = self._roi_lbl.winfo_height() or 100
             roi_w = self._roi_lbl.winfo_width() or 300
             self._show_in_label(self._roi_lbl, roi, roi_w, roi_h)

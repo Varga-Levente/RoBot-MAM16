@@ -1,24 +1,31 @@
 """
 Kapu kód felismerő modul (OpenCV alapú).
 
-A kapu 4 LED-et villogtat, amelyek egy 4-bites bináris számot reprezentálnak (0x0–0xF).
+A kapu 4 LED-et villogtat 2×2-es elrendezésben (TL, TR, BL, BR).
+Egy LED állapota = 1 bit; együtt 1 hex digitot kódolnak:
+
+    TL = bit 3 (MSB)    TR = bit 2
+    BL = bit 1          BR = bit 0 (LSB)
+
 A kódsorozat:
   - Az első digit mindig F (1111 — mind a 4 LED világít), ez a szinkron jel.
   - Ezután 3 db érvényes digit következik 200ms-onként:
-      - Nem lehet 0
+      - Nem lehet 0x0
       - Nem ismétlődhet közvetlenül
   - A 3 digit együtt alkotja a visszasugárzandó hex kódot (pl. „CA6").
 
 Felismerési algoritmus:
   1. ROI (érdeklődési terület) kivágása a frameből.
   2. Grayscale + GaussianBlur + Binary threshold.
-  3. A megvilágított LED-ek meghatározása:
-     - Kontúr alapú mód (VISION_USE_CONTOURS=True): 4 legnagyobb folt keresése,
-       pozíció alapján bal→jobb sorrendbe rendezve (MSB→LSB).
-     - Szekció alapú mód (VISION_USE_CONTOURS=False): az ROI 4 egyenlő vízszintes
-       részre osztva, átlagos fényerő dönt.
+  3. A 4 LED állapotának meghatározása:
+     - Grid módszer (VISION_USE_CONTOURS=False, alapértelmezett):
+       ROI 4 negyedre osztva, átlagos fényerő > VISION_GRID_THRESHOLD → bit=1.
+       Robusztusabb, tesztvideóhoz és éles kamerához egyaránt ajánlott.
+     - Kontúr alapú mód (VISION_USE_CONTOURS=True):
+       4 legnagyobb folt keresése, 2×2 rács szerint rendezve (TL/TR/BL/BR).
+       Zajosabb, de pontosabban jelzi az egyes LED-ek helyzetét.
   4. A 4 bit → hex digit konvertálása.
-  5. Állapotgép: WAIT_FOR_F → COLLECTING → CODE_READY.
+  5. Állapotgép: WAIT_FOR_F → COLLECTING → COOLDOWN.
 """
 
 import asyncio
@@ -161,43 +168,57 @@ class VisionProcessor:
         if settings.VISION_USE_CONTOURS:
             return self._digit_from_contours(binary)
         else:
-            return self._digit_from_sections(binary)
+            return self._digit_from_grid(binary)
 
-    def _digit_from_contours(self, binary: np.ndarray) -> Optional[int]:
-        """Kontúr alapú LED felismerés: a 4 legnagyobb folt pozíció szerint rendezve."""
-        contours, _ = cv2.findContours(binary, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-        # Szűrjük minimális terület szerint
-        valid = [c for c in contours if cv2.contourArea(c) >= settings.VISION_MIN_LED_AREA]
+    def _digit_from_grid(self, binary: np.ndarray) -> int:
+        """4-negyed grid módszer: TL=bit3, TR=bit2, BL=bit1, BR=bit0.
 
-        if len(valid) < 1:
-            return None
-
-        # Legfeljebb 4 legnagyobb kontúr, bal→jobb rendezve
-        valid.sort(key=cv2.contourArea, reverse=True)
-        top4 = valid[:4]
-        top4.sort(key=lambda c: cv2.boundingRect(c)[0])  # x pozíció szerint
-
-        # Meghatározzuk a 4 bit pozíciót a ROI szélességéből
-        roi_w = binary.shape[1]
-        section_w = roi_w / 4
-
-        bits = [0, 0, 0, 0]
-        for c in top4:
-            cx = cv2.boundingRect(c)[0] + cv2.boundingRect(c)[2] // 2
-            idx = min(int(cx / section_w), 3)
-            bits[idx] = 1
-
+        Az ROI-t 4 egyenlő negyedre osztja és minden negyed átlagos fényerejét méri.
+        Robusztusabb a kontúr módszernél: nem igényel pontosan 4 detektált foltot.
+        """
+        h, w = binary.shape
+        half_h, half_w = h // 2, w // 2
+        quadrants = [
+            binary[:half_h, :half_w],   # TL = bit 3 (MSB)
+            binary[:half_h, half_w:],   # TR = bit 2
+            binary[half_h:, :half_w],   # BL = bit 1
+            binary[half_h:, half_w:],   # BR = bit 0 (LSB)
+        ]
+        bits = [1 if np.mean(q) > settings.VISION_GRID_THRESHOLD else 0 for q in quadrants]
         return (bits[0] << 3) | (bits[1] << 2) | (bits[2] << 1) | bits[3]
 
-    def _digit_from_sections(self, binary: np.ndarray) -> int:
-        """Szekció alapú LED felismerés: az ROI 4 egyenlő részre osztva."""
+    def _digit_from_contours(self, binary: np.ndarray) -> int:
+        """Kontúr alapú LED felismerés — 2×2 rács szerint rendezve (TL/TR/BL/BR).
+
+        Ha kevés kontúrt talál, visszaesik a grid módszerre.
+        """
+        contours, _ = cv2.findContours(binary, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+        valid = [c for c in contours if cv2.contourArea(c) >= settings.VISION_MIN_LED_AREA]
+
+        if len(valid) < 2:
+            return self._digit_from_grid(binary)
+
+        # Legfeljebb 4 legnagyobb kontúr középpontja
+        valid.sort(key=cv2.contourArea, reverse=True)
+        centers = []
+        for c in valid[:4]:
+            x, y, cw, ch = cv2.boundingRect(c)
+            centers.append((x + cw // 2, y + ch // 2))
+
+        # Sor határ: y medián → felső vs alsó sor szétválasztás
+        sorted_ys = sorted(cy for _, cy in centers)
+        mid_y = sorted_ys[len(sorted_ys) // 2]
+        top = sorted([(cx, cy) for cx, cy in centers if cy < mid_y],  key=lambda p: p[0])
+        bot = sorted([(cx, cy) for cx, cy in centers if cy >= mid_y], key=lambda p: p[0])
+
+        # Bit-térkép a ROI negyedei alapján
         h, w = binary.shape
-        section_w = w // 4
-        bits = []
-        for i in range(4):
-            section = binary[:, i * section_w : (i + 1) * section_w]
-            mean = np.mean(section)
-            bits.append(1 if mean > settings.VISION_LED_THRESHOLD / 2 else 0)
+        bits = [0, 0, 0, 0]
+        for cx, cy in top + bot:
+            col = 1 if cx >= w // 2 else 0
+            row = 1 if cy >= h // 2 else 0
+            idx = row * 2 + col  # TL=0, TR=1, BL=2, BR=3
+            bits[idx] = 1
         return (bits[0] << 3) | (bits[1] << 2) | (bits[2] << 1) | bits[3]
 
 

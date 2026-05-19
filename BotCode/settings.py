@@ -43,11 +43,23 @@ VISION_ROI_H = 400
 VISION_LED_THRESHOLD   = 180   # Binarizálás küszöbértéke (0–255); fölötte = LED bekapcsolt
 VISION_MIN_LED_AREA    = 30    # Minimális kontúr terület pixelben (szűri a zajt)
 VISION_BLUR_KERNEL     = 5     # Gaussian blur kernel méret (páratlan szám)
-VISION_USE_CONTOURS    = True  # True = kontúr alapú felismerés, False = fix szekció alapú
+
+# Felismerési módszer:
+#   False = 4-negyed grid módszer (robusztus, tesztvideóhoz ajánlott)
+#   True  = kontúr alapú (pontosabb éles kameránál, de 2×2 rácshoz javított)
+VISION_USE_CONTOURS    = False
+
+# Grid módszer küszöb: a ROI-t 4 negyedre osztja (TL, TR, BL, BR).
+# Ha egy negyed átlagos fényereje > VISION_GRID_THRESHOLD → bit=1 (LED ON).
+# Tesztvideóhoz: 30; éles kameránál (sötétebb háttér): 50–80
+VISION_GRID_THRESHOLD  = 30
 
 # Időzítés
 VISION_DIGIT_INTERVAL_MS = 200   # Egy LED állapotváltás időablaka (ms) — verseny spec: 200ms
-VISION_STABLE_FRAMES     = 2     # Hány egymást követő egyforma frame kell a digit elfogadásához
+# Hány egymást követő egyforma frame kell a digit elfogadásához.
+# Tesztvideóhoz (GIF-alapú, frame-enként változhat): 1
+# Éles kameránál (zajszűrés): 2–3
+VISION_STABLE_FRAMES     = 1
 VISION_COOLDOWN_MS       = 500   # Sikeres kódolvasás után ennyi ms-ig nem indul újabb felismerés
 
 # ── IR ────────────────────────────────────────────────────────────────────────
