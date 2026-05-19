@@ -1,0 +1,17 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+.venv/
+*.egg-info/
+
+# Logs
+*.log
+BotCode/robot.log
+
+# Perzisztens konfig (tartalmaz esetleg érzékeny LoRa paramétereket)
+BotController/config.json
+
+# OS
+.DS_Store
+Thumbs.db

@@ -1,0 +1,122 @@
+<!DOCTYPE html>
+<html lang="hu">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>MAM16 BotController</title>
+<link rel="stylesheet" href="/web/style.css">
+</head>
+<body>
+
+<h1>MAM16 BotController</h1>
+<p class="subtitle">Raspberry Pi 3B+ · Xbox One USB · RFM95W LoRa</p>
+
+<!-- Status badges -->
+<div class="status-bar">
+  <div class="badge"><div class="dot" id="dot-gamepad"></div><span id="lbl-gamepad">Gamepad: –</span></div>
+  <div class="badge"><div class="dot" id="dot-lora"></div><span id="lbl-lora">LoRa: –</span></div>
+  <div class="badge" id="speed-badge">Sebesség: –%</div>
+</div>
+
+<div class="grid">
+
+  <!-- Joystick live preview -->
+  <div class="card">
+    <h2>Valós idejű állapot</h2>
+    <div class="joystick-wrap">
+      <div class="joystick-canvas-wrap">
+        <canvas class="joy" id="joy-canvas" width="80" height="80"></canvas>
+      </div>
+      <div class="axis-values">
+        <div>Linear: <span id="val-linear">0.000</span></div>
+        <div>Angular: <span id="val-angular">0.000</span></div>
+      </div>
+    </div>
+    <div class="trigger-row">
+      <div class="trigger-item">
+        <label>LT (hátra)</label>
+        <div class="trigger-bar"><div class="trigger-fill" id="lt-fill"></div></div>
+      </div>
+      <div class="trigger-item">
+        <label>RT (előre)</label>
+        <div class="trigger-bar"><div class="trigger-fill" id="rt-fill"></div></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Vezérlés beállítások -->
+  <div class="card">
+    <h2>Vezérlés</h2>
+
+    <div class="field">
+      <label>Sebesség limit <span class="value-hint" id="hint-speed">100%</span></label>
+      <input type="range" id="inp-speed" min="0" max="100" step="1" value="100"
+             oninput="document.getElementById('hint-speed').textContent=this.value+'%'">
+    </div>
+
+    <div class="field">
+      <label>Holtzona <span class="value-hint" id="hint-dz">5%</span></label>
+      <input type="range" id="inp-dz" min="0" max="30" step="1" value="5"
+             oninput="document.getElementById('hint-dz').textContent=this.value+'%'">
+    </div>
+
+    <div class="field">
+      <label>Küldési sebesség</label>
+      <select id="inp-hz">
+        <option value="10">10 Hz</option>
+        <option value="20" selected>20 Hz</option>
+        <option value="50">50 Hz</option>
+      </select>
+    </div>
+
+    <div class="field">
+      <label>Gamepad eszköz (üres = auto)</label>
+      <input type="text" id="inp-device" placeholder="/dev/input/event3">
+    </div>
+
+    <div class="btn-row">
+      <button class="primary" onclick="saveSection('ctrl')">Mentés</button>
+      <button onclick="loadSettings()">Visszaállítás</button>
+    </div>
+    <div class="save-status" id="status-ctrl"></div>
+  </div>
+
+  <!-- LoRa beállítások -->
+  <div class="card">
+    <h2>LoRa (RFM95W)</h2>
+
+    <div class="field">
+      <label>Frekvencia (MHz)</label>
+      <input type="number" id="inp-freq" step="0.1" min="863" max="870" value="868.0">
+    </div>
+
+    <div class="field">
+      <label>Spreading Factor</label>
+      <select id="inp-sf">
+        <option value="7" selected>SF7 (gyors, rövid hatótáv)</option>
+        <option value="8">SF8</option>
+        <option value="9">SF9</option>
+        <option value="10">SF10</option>
+        <option value="11">SF11</option>
+        <option value="12">SF12 (lassú, hosszú hatótáv)</option>
+      </select>
+    </div>
+
+    <div class="field">
+      <label>TX teljesítmény <span class="value-hint" id="hint-txpwr">17 dBm</span></label>
+      <input type="range" id="inp-txpwr" min="2" max="20" step="1" value="17"
+             oninput="document.getElementById('hint-txpwr').textContent=this.value+' dBm'">
+    </div>
+
+    <div class="btn-row">
+      <button class="primary" onclick="saveSection('lora')">Mentés + Újrainicializálás</button>
+      <button onclick="loadSettings()">Visszaállítás</button>
+    </div>
+    <div class="save-status" id="status-lora"></div>
+  </div>
+
+</div>
+
+<script src="/web/app.js"></script>
+</body>
+</html>
