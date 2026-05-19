@@ -1,26 +1,23 @@
+# Jetson Nano — Python 3.8 (deadsnakes PPA)
+# Telepítés:
+#   python3.8 -m pip install --ignore-installed numpy
+#   python3.8 -m pip install -r requirements-jetson.txt
+
 # ── WebRTC stream ──────────────────────────────────────────────────────────
 aiortc>=1.6.0
 aiohttp>=3.9.0
-av>=11.0.0             # PyAV — video frame kezelés (aiortc függőség)
+av>=11.0.0
 
 # ── Gépi látás ─────────────────────────────────────────────────────────────
-# Jetson Nano-n az opencv-python helyett ajánlott a Jetson-specifikus build:
-#   https://github.com/mdegans/nano_build_opencv
-# Alternatív (ha az előre fordított verzió nem elérhető):
-opencv-python-headless>=4.9.0
-numpy>=1.24.0
+opencv-python-headless>=4.5.0,<4.10.0
+numpy>=1.21.0,<1.25.0
+Pillow>=9.0.0,<11.0.0
 
 # ── Titkosítás ─────────────────────────────────────────────────────────────
 pycryptodome>=3.20.0
 
 # ── OLED kijelző ───────────────────────────────────────────────────────────
 luma.oled>=3.13.0
-Pillow>=10.0.0
-
-# ── GPIO / Hardware interfészek (Jetson Nano) ──────────────────────────────
-# Megjegyzés: Jetson.GPIO előre telepítve van a JetPack-kel.
-# Ha manuálisan kell:
-# Jetson.GPIO>=2.1.6
 
 # ── SPI / I2C (LoRa + OLED) ───────────────────────────────────────────────
 spidev>=3.6
@@ -29,3 +26,7 @@ adafruit-circuitpython-rfm9x>=2.4.0
 
 # ── Soros port (IR LED vezérlés) ───────────────────────────────────────────
 pyserial>=3.5
+
+# ── GPIO (Jetson Nano) ─────────────────────────────────────────────────────
+# Jetson.GPIO a JetPack-kel előre telepítve van, de ha manuálisan kell:
+# Jetson.GPIO>=2.1.6

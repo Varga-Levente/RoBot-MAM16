@@ -28,7 +28,7 @@ import asyncio
 import logging
 import time
 from enum import Enum, auto
-from typing import Optional, Tuple
+from typing import List, Optional, Tuple
 
 import cv2
 import numpy as np
@@ -47,13 +47,15 @@ class _State(Enum):
 class VisionProcessor:
     def __init__(self):
         self._state          = _State.WAIT_FOR_F
-        self._digits: list[int] = []
+        self._digits: List[int] = []
         self._last_digit: Optional[int] = None
         self._cooldown_until: float = 0.0
         self._stable_count:  int = 0
         self._candidate:     Optional[int] = None
         # Utolsó detektált kör pozíció (annotációhoz)
-        self._last_circle:   Optional[tuple[int, int, int]] = None
+        self._last_circle:   Optional[Tuple[int, int, int]] = None
+        # Annotált frame cache (debug streamhez)
+        self._last_annotated: Optional[np.ndarray] = None
 
     async def processing_loop(
         self,
@@ -66,6 +68,12 @@ class VisionProcessor:
             frame = camera.get_frame()
             if frame is not None:
                 code = self._process_frame(frame)
+                state.vision_state = self._state.name
+                state.last_digit   = self._candidate
+                if state.debug_annotation:
+                    self._last_annotated = self.annotate(frame, self._candidate)
+                else:
+                    self._last_annotated = None
                 if code:
                     state.last_gate_code = code
                     log.info(f"Kapu kód felismerve: {code}")
@@ -213,7 +221,11 @@ class VisionProcessor:
 
         return code if code > 0 else None
 
-    # ── Annotált frame (test_gui.py-hoz) ─────────────────────────────────────
+    def get_debug_frame(self) -> Optional[np.ndarray]:
+        """Visszaadja a legutóbb cacheit annotált frame-et (debug streamhez)."""
+        return self._last_annotated
+
+    # ── Annotált frame ────────────────────────────────────────────────────────
 
     def annotate(self, frame: np.ndarray, digit: Optional[int]) -> np.ndarray:
         """Visszaad egy annotált másolatot (kör, négyzetek, bit értékek)."""

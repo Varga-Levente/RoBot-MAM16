@@ -15,7 +15,7 @@ import asyncio
 import logging
 import time
 from dataclasses import dataclass
-from typing import Optional
+from typing import List, Optional
 
 import settings
 
@@ -33,7 +33,7 @@ class _Motor:
 
 class MotorController:
     def __init__(self):
-        self._motors: list[_Motor] = [
+        self._motors: List[_Motor] = [
             _Motor(settings.MOTOR_FL_IN1, settings.MOTOR_FL_IN2),
             _Motor(settings.MOTOR_FR_IN1, settings.MOTOR_FR_IN2),
             _Motor(settings.MOTOR_RL_IN1, settings.MOTOR_RL_IN2),
@@ -165,6 +165,7 @@ class MotorController:
                 self.set_motor(mid, speed)
             else:
                 log.warning(f"Ismeretlen motor parancs: {action}")
+            state.motor_speeds = [m.current_speed for m in self._motors]
 
 
 # ── Önálló teszt ─────────────────────────────────────────────────────────────

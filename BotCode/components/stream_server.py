@@ -19,7 +19,7 @@ import logging
 import os
 import time
 from pathlib import Path
-from typing import Optional, Set
+from typing import Dict, Optional, Set
 
 import av
 import numpy as np
@@ -42,10 +42,11 @@ class _CameraVideoTrack(VideoStreamTrack):
 
     kind = "video"
 
-    def __init__(self, camera):
+    def __init__(self, camera, state=None, vision=None):
         super().__init__()
         self._camera = camera
-        self._timestamp = 0
+        self._state  = state
+        self._vision = vision
         self._blank = np.zeros(
             (settings.CAMERA_HEIGHT, settings.CAMERA_WIDTH, 3), dtype=np.uint8
         )
@@ -53,7 +54,11 @@ class _CameraVideoTrack(VideoStreamTrack):
     async def recv(self) -> av.VideoFrame:
         pts, time_base = await self.next_timestamp()
 
-        frame_data = self._camera.get_frame()
+        if self._state and self._state.debug_annotation and self._vision:
+            frame_data = self._vision.get_debug_frame() or self._camera.get_frame()
+        else:
+            frame_data = self._camera.get_frame()
+
         if frame_data is None:
             frame_data = self._blank
 
@@ -68,11 +73,13 @@ class StreamServer:
         self._pcs: Set[RTCPeerConnection] = set()
         self._relay: Optional[MediaRelay] = None
         self._camera = None
-        self._state = None
+        self._state  = None
+        self._vision = None
 
-    async def serve(self, camera, state) -> None:
+    async def serve(self, camera, state, vision=None) -> None:
         self._camera = camera
         self._state  = state
+        self._vision = vision
         self._relay  = MediaRelay()
 
         app = web.Application()
@@ -81,6 +88,7 @@ class StreamServer:
         app.router.add_post("/offer",       self._offer)
         app.router.add_get("/logs",         self._logs_sse)
         app.router.add_get("/state",        self._state_handler)
+        app.router.add_post("/api/debug",   self._debug_handler)
 
         runner = web.AppRunner(app)
         await runner.setup()
@@ -122,7 +130,7 @@ class StreamServer:
 
         # Video track hozzáadása — relay-el több kliens is nézheti
         track = self._relay.subscribe(
-            _CameraVideoTrack(self._camera), buffered=False
+            _CameraVideoTrack(self._camera, self._state, self._vision), buffered=False
         )
         pc.addTrack(track)
 
@@ -173,13 +181,27 @@ class StreamServer:
         """Aktuális robot állapot JSON-ban (JS 500ms-onként pollozza)."""
         s = self._state
         return web.json_response({
-            "role":           s.role,
-            "ip":             s.ip_address,
-            "battery":        s.battery_voltage,
-            "gate_code":      s.last_gate_code,
-            "ir_transmitting": s.ir_transmitting,
-            "lora_connected": s.lora_connected,
+            "role":             s.role,
+            "ip":               s.ip_address,
+            "battery":          s.battery_voltage,
+            "gate_code":        s.last_gate_code,
+            "ir_transmitting":  s.ir_transmitting,
+            "lora_connected":   s.lora_connected,
+            "debug_annotation": s.debug_annotation,
+            "vision_state":     s.vision_state,
+            "last_digit":       s.last_digit,
+            "motor_speeds":     s.motor_speeds,
+            "ir_last_code":     s.ir_last_code,
+            "ir_tx_count":      s.ir_tx_count,
         })
+
+    async def _debug_handler(self, request: web.Request) -> web.Response:
+        """Debug beállítások módosítása (pl. annotáció be/ki)."""
+        data = await request.json()
+        if "annotation" in data:
+            self._state.debug_annotation = bool(data["annotation"])
+            log.info(f"Debug annotáció: {'BE' if self._state.debug_annotation else 'KI'}")
+        return web.json_response({"debug_annotation": self._state.debug_annotation})
 
 
 # ── Segédfüggvény: codec preferencia SDP módosítással ────────────────────────
@@ -191,7 +213,7 @@ def _prefer_codec(
     lines = sdp_desc.sdp.split("\r\n")
     result = []
     in_media = False
-    pt_map: dict[str, str] = {}
+    pt_map: Dict[str, str] = {}
 
     for line in lines:
         if line.startswith(f"m={kind}"):
@@ -219,12 +241,22 @@ if __name__ == "__main__":
 
     @dataclass
     class _MockState:
-        role: str = "PACMAN"
-        ip_address: str = "127.0.0.1"
-        battery_voltage: float = 11.4
-        last_gate_code: str = "CA6"
-        ir_transmitting: bool = False
-        lora_connected: bool = True
+        role:             str   = "PACMAN"
+        ip_address:       str   = "127.0.0.1"
+        battery_voltage:  float = 11.4
+        last_gate_code:   str   = "CA6"
+        ir_transmitting:  bool  = False
+        lora_connected:   bool  = True
+        debug_annotation: bool  = False
+        vision_state:     str   = "WAIT_FOR_F"
+        last_digit:       object = None
+        motor_speeds:     object = None
+        ir_last_code:     str   = "---"
+        ir_tx_count:      int   = 0
+
+        def __post_init__(self):
+            if self.motor_speeds is None:
+                self.motor_speeds = [0.0, 0.0, 0.0, 0.0]
 
     async def _run():
         from utils.logger import setup_logger

@@ -3,6 +3,8 @@
 // ── Állapot ────────────────────────────────────────────────────────────────
 const MAX_LOG_ROWS    = 500;
 let   logOpen         = false;
+let   debugOpen       = false;
+let   annotationOn    = false;
 let   logRowCount     = 0;
 let   autoScroll      = true;
 let   pc              = null;   // RTCPeerConnection
@@ -27,6 +29,27 @@ window.toggleLog = function () {
   logBody.classList.toggle("open", logOpen);
   toggleBtn.textContent = logOpen ? "▼" : "▲";
   if (logOpen && autoScroll) scrollLogToBottom();
+};
+
+// ── Debug panel ────────────────────────────────────────────────────────────
+window.toggleDebug = function () {
+  debugOpen = !debugOpen;
+  document.getElementById("debug-body").classList.toggle("open", debugOpen);
+  document.getElementById("debug-toggle-btn").textContent = debugOpen ? "▼" : "▲";
+};
+
+window.toggleAnnotation = async function () {
+  annotationOn = !annotationOn;
+  const btn = document.getElementById("annot-btn");
+  btn.textContent = annotationOn ? "BE" : "KI";
+  btn.classList.toggle("active", annotationOn);
+  try {
+    await fetch("/api/debug", {
+      method:  "POST",
+      headers: { "Content-Type": "application/json" },
+      body:    JSON.stringify({ annotation: annotationOn }),
+    });
+  } catch (_) {}
 };
 
 function scrollLogToBottom() {
@@ -110,6 +133,40 @@ function updateState(s) {
   connDot.classList.toggle("connected", !!s.lora_connected);
   connDot.classList.toggle("error", !s.lora_connected);
   connText.textContent = s.lora_connected ? "LoRa kapcsolva" : "LoRa nincs";
+
+  // Debug panel
+  const dbgVision = document.getElementById("dbg-vision-state");
+  const dbgDigit  = document.getElementById("dbg-digit");
+  const dbgIrCode = document.getElementById("dbg-ir-code");
+  const dbgIrCnt  = document.getElementById("dbg-ir-count");
+  const annotBtn  = document.getElementById("annot-btn");
+
+  if (dbgVision) dbgVision.textContent = s.vision_state || "---";
+  if (dbgDigit)  dbgDigit.textContent  = s.last_digit != null ? s.last_digit.toString(16).toUpperCase() : "---";
+  if (dbgIrCode) dbgIrCode.textContent = s.ir_last_code || "---";
+  if (dbgIrCnt)  dbgIrCnt.textContent  = s.ir_tx_count  != null ? s.ir_tx_count : 0;
+
+  // Annotáció gomb szinkronizálás (ha szerver állítja)
+  if (s.debug_annotation !== undefined && s.debug_annotation !== annotationOn) {
+    annotationOn = s.debug_annotation;
+    if (annotBtn) {
+      annotBtn.textContent = annotationOn ? "BE" : "KI";
+      annotBtn.classList.toggle("active", annotationOn);
+    }
+  }
+
+  // Motor sebességek
+  if (Array.isArray(s.motor_speeds)) {
+    s.motor_speeds.forEach(function (spd, i) {
+      const bar = document.getElementById("dbg-spd-" + i);
+      const val = document.getElementById("dbg-val-" + i);
+      if (bar) {
+        bar.style.width = (Math.abs(spd) * 100) + "%";
+        bar.classList.toggle("reverse", spd < 0);
+      }
+      if (val) val.textContent = spd.toFixed(2);
+    });
+  }
 }
 
 // ── WebRTC kapcsolat ──────────────────────────────────────────────────────

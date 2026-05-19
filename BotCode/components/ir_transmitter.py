@@ -17,7 +17,7 @@ Verseny adatformátum (spec):
 import asyncio
 import logging
 import time
-from typing import Optional
+from typing import List, Optional
 
 import settings
 
@@ -27,7 +27,7 @@ log = logging.getLogger("ir")
 class IRTransmitter:
     def __init__(self):
         self._serial = None
-        self._last_tx_times: list[float] = []  # token bucket: utolsó adások időpontjai
+        self._last_tx_times: List[float] = []  # token bucket: utolsó adások időpontjai
 
     def _open_serial(self) -> None:
         if settings.DRY_RUN:
@@ -130,6 +130,8 @@ class IRTransmitter:
             state.ir_transmitting = True
             success = await asyncio.get_event_loop().run_in_executor(None, self.transmit, code)
             if success:
+                state.ir_last_code = code
+                state.ir_tx_count += 1
                 # Rövid ideig tartjuk aktívan az IR státuszt (UI visszajelzéshez)
                 await asyncio.sleep(0.5)
             state.ir_transmitting = False

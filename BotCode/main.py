@@ -15,6 +15,7 @@ import logging
 import signal
 import socket
 from dataclasses import dataclass, field
+from typing import List, Optional
 
 import settings
 from utils.logger import setup_logger
@@ -35,6 +36,13 @@ class RobotState:
     last_gate_code:   str   = "---"
     ir_transmitting:  bool  = False
     lora_connected:   bool  = False
+    # Debug mezők (böngészős debug UI)
+    debug_annotation: bool         = False
+    vision_state:     str          = "WAIT_FOR_F"
+    last_digit:       Optional[int] = None
+    motor_speeds:     List[float]  = field(default_factory=lambda: [0.0, 0.0, 0.0, 0.0])
+    ir_last_code:     str          = "---"
+    ir_tx_count:      int          = 0
 
 
 def _get_local_ip() -> str:
@@ -100,7 +108,7 @@ async def main(args: argparse.Namespace) -> None:
                             name="motor"),
         asyncio.create_task(oled.update_loop(state),
                             name="oled"),
-        asyncio.create_task(stream.serve(camera, state),
+        asyncio.create_task(stream.serve(camera, state, vision),
                             name="stream"),
     ]
 

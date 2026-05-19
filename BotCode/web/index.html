@@ -44,16 +44,82 @@
     </div>
   </div>
 
-  <!-- Log panel (jobb alsó, ki/be csukható) -->
-  <div class="log-container" id="log-container">
-    <div class="log-header" id="log-toggle" onclick="toggleLog()">
-      <div>
-        <span class="log-title">Napló</span>
-        <span class="log-count" id="log-count">0 sor</span>
+  <!-- Jobb oldali panel stack (debug + log) -->
+  <div class="right-stack">
+
+    <!-- Debug panel (ki/be csukható) -->
+    <div class="debug-container" id="debug-container">
+      <div class="debug-header" onclick="toggleDebug()">
+        <span class="log-title">Debug</span>
+        <button class="toggle-btn" id="debug-toggle-btn">▲</button>
       </div>
-      <button class="toggle-btn" id="toggle-btn">▲</button>
+      <div class="debug-body" id="debug-body">
+        <!-- Vision szekció -->
+        <div class="debug-section">
+          <div class="debug-row">
+            <span class="debug-label">Vision</span>
+            <span class="debug-value" id="dbg-vision-state">WAIT_FOR_F</span>
+          </div>
+          <div class="debug-row">
+            <span class="debug-label">Digit</span>
+            <span class="debug-value" id="dbg-digit">---</span>
+          </div>
+          <div class="debug-row">
+            <span class="debug-label">Annotálás</span>
+            <button class="annot-btn" id="annot-btn" onclick="toggleAnnotation()">KI</button>
+          </div>
+        </div>
+        <div class="debug-divider"></div>
+        <!-- IR szekció -->
+        <div class="debug-section">
+          <div class="debug-row">
+            <span class="debug-label">IR utolsó</span>
+            <span class="debug-value" id="dbg-ir-code">---</span>
+          </div>
+          <div class="debug-row">
+            <span class="debug-label">IR szám</span>
+            <span class="debug-value" id="dbg-ir-count">0</span>
+          </div>
+        </div>
+        <div class="debug-divider"></div>
+        <!-- Motor sebességek -->
+        <div class="debug-section">
+          <div class="debug-row">
+            <span class="debug-label">FL</span>
+            <div class="speed-bar-wrap"><div class="speed-bar" id="dbg-spd-0"></div></div>
+            <span class="speed-val" id="dbg-val-0">0.00</span>
+          </div>
+          <div class="debug-row">
+            <span class="debug-label">FR</span>
+            <div class="speed-bar-wrap"><div class="speed-bar" id="dbg-spd-1"></div></div>
+            <span class="speed-val" id="dbg-val-1">0.00</span>
+          </div>
+          <div class="debug-row">
+            <span class="debug-label">RL</span>
+            <div class="speed-bar-wrap"><div class="speed-bar" id="dbg-spd-2"></div></div>
+            <span class="speed-val" id="dbg-val-2">0.00</span>
+          </div>
+          <div class="debug-row">
+            <span class="debug-label">RR</span>
+            <div class="speed-bar-wrap"><div class="speed-bar" id="dbg-spd-3"></div></div>
+            <span class="speed-val" id="dbg-val-3">0.00</span>
+          </div>
+        </div>
+      </div>
     </div>
-    <div class="log-body" id="log-body"></div>
+
+    <!-- Log panel (ki/be csukható) -->
+    <div class="log-container" id="log-container">
+      <div class="log-header" id="log-toggle" onclick="toggleLog()">
+        <div>
+          <span class="log-title">Napló</span>
+          <span class="log-count" id="log-count">0 sor</span>
+        </div>
+        <button class="toggle-btn" id="toggle-btn">▲</button>
+      </div>
+      <div class="log-body" id="log-body"></div>
+    </div>
+
   </div>
 
 </div>
