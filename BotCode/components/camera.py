@@ -73,7 +73,12 @@ class CameraManager:
             self._cap = cv2.VideoCapture(source)
 
         if not self._cap.isOpened():
-            raise RuntimeError(f"Nem sikerült megnyitni a kamera forrást: {source}")
+            log.warning(f"Nem sikerült megnyitni a kamera forrást, dummy mód: {source}")
+            self._cap = None
+            self._running = True
+            self._thread = threading.Thread(target=self._dummy_loop, daemon=True)
+            self._thread.start()
+            return
 
         self._running = True
         self._thread = threading.Thread(target=self._capture_loop, daemon=True)
@@ -84,7 +89,7 @@ class CameraManager:
         self._running = False
         if self._thread:
             self._thread.join(timeout=2.0)
-        if self._cap:
+        if self._cap is not None:
             self._cap.release()
         log.info("Kamera leállítva")
 
