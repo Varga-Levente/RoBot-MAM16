@@ -79,8 +79,10 @@ class MotorController:
 
         duty = abs(speed) * 100.0
 
-        if settings.DRY_RUN or not self._initialized:
+        if settings.DRY_RUN:
             log.debug(f"[DRY-RUN] Motor[{motor_id}] speed={speed:.2f}")
+            return
+        if not self._initialized:
             return
 
         if speed > 0:
@@ -141,9 +143,13 @@ class MotorController:
     async def command_loop(self, command_queue: asyncio.Queue, state) -> None:
         """Főhurok: LoRa parancsokat fogad és végrehajtja."""
         if not self._init_hardware():
-            log.error("Motor vezérlő nem inicializálható")
+            log.warning("Motor vezérlő hardver nem elérhető — parancsok figyelve, GPIO nélkül")
             while True:
-                await asyncio.sleep(1)
+                try:
+                    cmd = await asyncio.wait_for(command_queue.get(), timeout=1.0)
+                    log.debug(f"[NO-HW] Motor parancs figyelve: {cmd}")
+                except asyncio.TimeoutError:
+                    pass
 
         log.info("Motor parancs hurok elindult")
         while True:

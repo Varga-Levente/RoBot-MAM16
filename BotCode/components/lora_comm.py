@@ -135,8 +135,9 @@ class LoRaComm:
     async def receive_loop(self, command_queue: asyncio.Queue, state) -> None:
         """Főhurok: fogad, hitelesít, dekryptál, parancsot queue-ba tesz."""
         if not self._init_hardware():
-            log.error("LoRa nem inicializálható, kommunikációs hurok leáll")
-            return
+            log.warning("LoRa hardver nem elérhető — kommunikáció szimulált módban")
+            while True:
+                await asyncio.sleep(10)
 
         await self._send_challenge()
         log.info("LoRa fogadó hurok elindult")

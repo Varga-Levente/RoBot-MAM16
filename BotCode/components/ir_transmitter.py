@@ -103,9 +103,12 @@ class IRTransmitter:
 
         self._last_tx_times.append(time.monotonic())
 
-        if settings.DRY_RUN or self._serial is None:
+        if settings.DRY_RUN:
             log.info(f"[DRY-RUN] IR küldés: {code} [{settings.IR_MODE}]")
             return True
+        if self._serial is None:
+            log.warning(f"IR UART nem elérhető, küldés kihagyva: {code}")
+            return False
 
         try:
             if settings.IR_MODE == "CARRIER_UART":
