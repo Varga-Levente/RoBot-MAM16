@@ -12,7 +12,7 @@ import argparse
 import asyncio
 import logging
 import signal
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 
 import settings
 from web_server       import ControllerWebServer, load_config
@@ -43,9 +43,10 @@ def _setup_logger() -> logging.Logger:
 
 
 async def _handshake_loop(sender: LoraSender, state: ControllerState) -> None:
+    loop = asyncio.get_running_loop()
     while True:
         state.lora_authenticated = False
-        ok = await asyncio.get_event_loop().run_in_executor(
+        ok = await loop.run_in_executor(
             None, lambda: sender.do_handshake(timeout_sec=10.0)
         )
         if ok:
@@ -64,58 +65,73 @@ async def control_loop(
     interval = 1.0 / settings.CTRL_SEND_HZ
 
     while True:
-        # ── Handshake (vagy újra-handshake ha LoRa újrainicializálás kell) ──
-        if state.lora_hw_ok and state.lora_reinit_requested:
-            log.info("LoRa újrainicializálás...")
-            ok = await asyncio.get_event_loop().run_in_executor(None, sender.reinit)
-            state.lora_hw_ok = ok
-            state.lora_reinit_requested = False
-
-        if state.lora_hw_ok and not state.lora_authenticated:
-            log.info("LoRa handshake indítása...")
-            await _handshake_loop(sender, state)
-
-        # ── Gamepad megnyitás / újracsatlakozás ──────────────────────────────
-        if not state.gamepad_connected:
-            log.info("Gamepad keresése...")
-            ok = await asyncio.get_event_loop().run_in_executor(None, gamepad.open)
-            if not ok:
-                await asyncio.sleep(1.0)
-                continue
-            state.gamepad_connected = True
-            log.info("Kontroller csatlakozva")
-
-        # ── Fő vezérlési ciklus ───────────────────────────────────────────────
-        t0 = asyncio.get_event_loop().time()
         try:
-            linear, angular = await asyncio.get_event_loop().run_in_executor(
-                None, gamepad.read_state
-            )
-        except OSError:
-            log.warning("Kontroller lecsatlakozva")
-            await asyncio.get_event_loop().run_in_executor(None, sender.send_stop)
-            gamepad.close()
-            state.gamepad_connected = False
-            continue
+            await _control_tick(sender, gamepad, state, dry_run, interval, log)
+        except asyncio.CancelledError:
+            raise
+        except Exception as e:
+            log.error(f"Vezérlési ciklus váratlan hiba: {e}", exc_info=True)
+            await asyncio.sleep(1.0)
 
-        state.linear  = linear
-        state.angular = angular
-        state.lt      = gamepad.raw_lt
-        state.rt      = gamepad.raw_rt
-        state.stick_x = gamepad.raw_steer
 
-        if dry_run:
-            if linear or angular:
-                log.debug(f"[DRY-RUN] linear={linear:.3f} angular={angular:.3f}")
-        elif state.lora_hw_ok and state.lora_authenticated:
-            if linear != 0.0 or angular != 0.0:
-                sender.send_command(linear, angular)
-            # keepalive stop ~1 Hz
-            elif int(t0 * 1.0) % max(1, int(settings.CTRL_SEND_HZ)) == 0:
-                sender.send_stop()
+async def _control_tick(
+    sender:   LoraSender,
+    gamepad:  GamepadReader,
+    state:    ControllerState,
+    dry_run:  bool,
+    interval: float,
+    log:      logging.Logger,
+) -> None:
+    loop = asyncio.get_running_loop()
 
-        elapsed = asyncio.get_event_loop().time() - t0
-        await asyncio.sleep(max(0.0, interval - elapsed))
+    # ── Handshake (vagy újra-handshake ha LoRa újrainicializálás kell) ──
+    if state.lora_hw_ok and state.lora_reinit_requested:
+        log.info("LoRa újrainicializálás...")
+        ok = await loop.run_in_executor(None, sender.reinit)
+        state.lora_hw_ok = ok
+        state.lora_reinit_requested = False
+
+    if state.lora_hw_ok and not state.lora_authenticated:
+        log.info("LoRa handshake indítása...")
+        await _handshake_loop(sender, state)
+
+    # ── Gamepad megnyitás / újracsatlakozás ──────────────────────────────
+    if not state.gamepad_connected:
+        log.info("Gamepad keresése...")
+        ok = await loop.run_in_executor(None, gamepad.open)
+        if not ok:
+            await asyncio.sleep(1.0)
+            return
+        state.gamepad_connected = True
+        log.info("Kontroller csatlakozva")
+
+    # ── Fő vezérlési ciklus ───────────────────────────────────────────────
+    t0 = loop.time()
+    try:
+        linear, angular = await loop.run_in_executor(None, gamepad.read_state)
+    except OSError:
+        log.warning("Kontroller lecsatlakozva")
+        gamepad.close()
+        state.gamepad_connected = False
+        return
+
+    state.linear  = linear
+    state.angular = angular
+    state.lt      = gamepad.raw_lt
+    state.rt      = gamepad.raw_rt
+    state.stick_x = gamepad.raw_steer
+
+    if dry_run:
+        if linear or angular:
+            log.debug(f"[DRY-RUN] linear={linear:.3f} angular={angular:.3f}")
+    elif state.lora_hw_ok and state.lora_authenticated:
+        if linear != 0.0 or angular != 0.0:
+            sender.send_command(linear, angular)
+        elif int(t0) % max(1, settings.CTRL_SEND_HZ) == 0:
+            sender.send_stop()
+
+    elapsed = loop.time() - t0
+    await asyncio.sleep(max(0.0, interval - elapsed))
 
 
 async def main(args: argparse.Namespace) -> None:
@@ -163,11 +179,15 @@ async def main(args: argparse.Namespace) -> None:
     log.info(f"Beállítás UI: http://0.0.0.0:{settings.WEB_PORT}")
     log.info("Fut. Ctrl+C a leállításhoz.")
 
+    def _on_task_done(task: asyncio.Task) -> None:
+        if not task.cancelled() and task.exception():
+            log.error(f"Task '{task.get_name()}' leállt: {task.exception()}", exc_info=task.exception())
+
+    ctrl_task.add_done_callback(_on_task_done)
+    web_task.add_done_callback(_on_task_done)
+
     try:
-        done, _ = await asyncio.wait(
-            [asyncio.create_task(stop_event.wait()), ctrl_task, web_task],
-            return_when=asyncio.FIRST_COMPLETED,
-        )
+        await stop_event.wait()
     finally:
         ctrl_task.cancel()
         web_task.cancel()
