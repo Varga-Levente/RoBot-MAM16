@@ -26,14 +26,18 @@ CAMERA_TEST_LOOP  = True # True = videó végén visszaugrik az elejére
 # ── VISION ────────────────────────────────────────────────────────────────────
 # Kapu LED villogás felismerés (OpenCV)
 
-# A kamera képén belüli terület ahol a kapu LED-ek várhatóak
-# (x, y, szélesség, magasság) pixelben a teljes képen belül
-# Ha a ROI kilóg a frame méretéből, automatikusan szűkül a határig.
-#
-# 1280×720 (éles, Jetson CSI kamera):
-#   VISION_ROI_X, VISION_ROI_Y, VISION_ROI_W, VISION_ROI_H = 400, 200, 480, 320
-#
-# 458×458 (tesztvideó, négyzet arány):
+# Kapu kör detektálás (HoughCircles) — automatikusan megtalálja a kaput, nincs fix ROI
+# Ha a kör nem detektálható (pl. rossz fényviszony), visszaesik a fix ROI-ra.
+VISION_USE_HOUGH        = True   # True = HoughCircles (ajánlott); False = fix ROI
+VISION_HOUGH_PARAM1     = 100    # Canny edge detector felső küszöb
+VISION_HOUGH_PARAM2     = 30     # Kör akkumulátor küszöb (kisebb = több találat)
+VISION_HOUGH_MIN_RADIUS = 100    # Minimális kapu sugár pixelben
+VISION_HOUGH_MAX_RADIUS = 200    # Maximális kapu sugár pixelben
+
+# Fix ROI fallback — csak akkor használt, ha HoughCircles nem talál kört
+# (x, y, szélesség, magasság) pixelben
+# 1280×720: VISION_ROI_X, VISION_ROI_Y, VISION_ROI_W, VISION_ROI_H = 400, 200, 480, 320
+# 458×458:
 VISION_ROI_X = 29
 VISION_ROI_Y = 29
 VISION_ROI_W = 400
@@ -41,24 +45,16 @@ VISION_ROI_H = 400
 
 # LED jellemzők
 VISION_LED_THRESHOLD   = 180   # Binarizálás küszöbértéke (0–255); fölötte = LED bekapcsolt
-VISION_MIN_LED_AREA    = 30    # Minimális kontúr terület pixelben (szűri a zajt)
-VISION_BLUR_KERNEL     = 5     # Gaussian blur kernel méret (páratlan szám)
+VISION_MIN_SQUARE_AREA = 500   # Minimális négyzet kontúr terület (szűri a zajt)
 
-# Felismerési módszer:
-#   False = 4-negyed grid módszer (robusztus, tesztvideóhoz ajánlott)
-#   True  = kontúr alapú (pontosabb éles kameránál, de 2×2 rácshoz javított)
-VISION_USE_CONTOURS    = False
-
-# Grid módszer küszöb: a ROI-t 4 negyedre osztja (TL, TR, BL, BR).
-# Ha egy negyed átlagos fényereje > VISION_GRID_THRESHOLD → bit=1 (LED ON).
-# Tesztvideóhoz: 30; éles kameránál (sötétebb háttér): 50–80
-VISION_GRID_THRESHOLD  = 30
+# Bit-sorrend (versenyspecifikáció szerint):
+#   TL=1 (LSB), TR=2, BL=4, BR=8 (MSB)
+#   Pl. C=12=1100: BR(8)+BL(4)=12; A=10=1010: BR(8)+TR(2)=10; 6=0110: BL(4)+TR(2)=6
 
 # Időzítés
 VISION_DIGIT_INTERVAL_MS = 200   # Egy LED állapotváltás időablaka (ms) — verseny spec: 200ms
 # Hány egymást követő egyforma frame kell a digit elfogadásához.
-# Tesztvideóhoz (GIF-alapú, frame-enként változhat): 1
-# Éles kameránál (zajszűrés): 2–3
+# Tesztvideóhoz (GIF-alapú): 1; éles kameránál (zajszűrés): 2–3
 VISION_STABLE_FRAMES     = 1
 VISION_COOLDOWN_MS       = 500   # Sikeres kódolvasás után ennyi ms-ig nem indul újabb felismerés
 

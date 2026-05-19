@@ -316,7 +316,7 @@ class VisionPanel(_Panel):
         self._bit_dots: list[ctk.CTkLabel] = []
         bits_frame = ctk.CTkFrame(dig_row, fg_color="transparent")
         bits_frame.pack(side="left")
-        ctk.CTkLabel(bits_frame, text="MSB → LSB", font=_FONT_SMALL,
+        ctk.CTkLabel(bits_frame, text="TL  TR  BL  BR", font=_FONT_SMALL,
                      text_color=_CLR_MUTED).pack()
         dots_row = ctk.CTkFrame(bits_frame, fg_color="transparent")
         dots_row.pack()
@@ -415,66 +415,31 @@ class VisionPanel(_Panel):
         self._frame_count += 1
 
         # ── Vision feldolgozás ───────────────────────────────────────────
-        code = self._processor._process_frame(frame)
-        digit = self._processor._last_digit
+        code       = self._processor._process_frame(frame)
+        digit      = self._processor._candidate
         state_name = self._processor._state.name
 
-        # ── Annotáció a frame-re ─────────────────────────────────────────
-        annotated = frame.copy()
-
-        # ROI keret
-        rx = settings.VISION_ROI_X
-        ry = settings.VISION_ROI_Y
-        rw = settings.VISION_ROI_W
-        rh = settings.VISION_ROI_H
-        cv2.rectangle(annotated, (rx, ry), (rx + rw, ry + rh), (0, 200, 255), 2)
-
-        # Állapot szöveg a frame-en
-        state_color = {"WAIT_FOR_F": (150, 150, 150),
-                       "COLLECTING": (0, 220, 130),
-                       "COOLDOWN":   (200, 100, 0)}.get(state_name, (255, 255, 255))
-        cv2.putText(annotated, state_name, (rx, ry - 10),
-                    cv2.FONT_HERSHEY_SIMPLEX, 0.6, state_color, 2)
-
-        # Digit overlay
-        if digit is not None:
-            dtext = f"{digit:X}"
-            cv2.putText(annotated, dtext,
-                        (rx + rw + 10, ry + 40),
-                        cv2.FONT_HERSHEY_SIMPLEX, 1.8, (56, 189, 248), 3)
+        # ── Annotált frame (kör, négyzetek, bit feliratok) ───────────────
+        annotated = self._processor.annotate(frame, digit)
 
         # ── Kép megjelenítése ────────────────────────────────────────────
         vw = self._video_lbl.winfo_width() or 640
         vh = self._video_lbl.winfo_height() or 400
         self._show_in_label(self._video_lbl, annotated, vw, vh)
 
-        # ── ROI zoom — 2×2 grid annotáció ───────────────────────────────
-        h, w = frame.shape[:2]
-        actual_rw = min(rw, w - rx)
-        actual_rh = min(rh, h - ry)
-        if actual_rw > 0 and actual_rh > 0:
-            roi = annotated[ry:ry + actual_rh, rx:rx + actual_rw].copy()
-            mh, mw = roi.shape[:2]
-            half_h, half_w = mh // 2, mw // 2
-            grid_color = (80, 80, 80)
-            # Vízszintes és függőleges felezővonal
-            cv2.line(roi, (0, half_h), (mw, half_h), grid_color, 1)
-            cv2.line(roi, (half_w, 0), (half_w, mh), grid_color, 1)
-            # TL/TR/BL/BR feliratok + bit értékek
-            labels = [
-                ("TL", (4, 14),             (0, half_h), (0, half_w)),
-                ("TR", (half_w + 4, 14),    (0, half_h), (half_w, mw)),
-                ("BL", (4, half_h + 14),    (half_h, mh), (0, half_w)),
-                ("BR", (half_w + 4, half_h + 14), (half_h, mh), (half_w, mw)),
-            ]
-            for i, (lbl, pos, (r0, r1), (c0, c1)) in enumerate(labels):
-                bit = (digit >> (3 - i)) & 1 if digit is not None else 0
-                color = (0, 220, 80) if bit else (80, 80, 80)
-                cv2.putText(roi, f"{lbl}:{bit}", pos,
-                            cv2.FONT_HERSHEY_SIMPLEX, 0.38, color, 1)
-            roi_h = self._roi_lbl.winfo_height() or 100
-            roi_w = self._roi_lbl.winfo_width() or 300
-            self._show_in_label(self._roi_lbl, roi, roi_w, roi_h)
+        # ── ROI zoom — detektált kör területe ────────────────────────────
+        lc = self._processor._last_circle
+        if lc:
+            lcx, lcy, lr = lc
+            r0 = max(0, lcy - lr)
+            r1 = min(frame.shape[0], lcy + lr)
+            c0 = max(0, lcx - lr)
+            c1 = min(frame.shape[1], lcx + lr)
+            if r1 > r0 and c1 > c0:
+                roi = annotated[r0:r1, c0:c1].copy()
+                roi_h = self._roi_lbl.winfo_height() or 100
+                roi_w = self._roi_lbl.winfo_width() or 300
+                self._show_in_label(self._roi_lbl, roi, roi_w, roi_h)
 
         # ── UI állapot frissítés ─────────────────────────────────────────
         self._state_var.set(state_name)
@@ -507,8 +472,9 @@ class VisionPanel(_Panel):
         label.image = photo
 
     def _update_bit_dots(self, value: int):
+        # Bit sorrend: TL=1(bit0), TR=2(bit1), BL=4(bit2), BR=8(bit3)
         for i, dot in enumerate(self._bit_dots):
-            bit = (value >> (3 - i)) & 1
+            bit = (value >> i) & 1
             dot.configure(text_color=_CLR_GREEN if bit else "#334155")
 
     def _clear_history(self):
