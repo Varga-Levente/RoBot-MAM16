@@ -27,11 +27,17 @@ CAMERA_TEST_LOOP  = True # True = videó végén visszaugrik az elejére
 # Kapu LED villogás felismerés (OpenCV)
 
 # A kamera képén belüli terület ahol a kapu LED-ek várhatóak
-# (x, y, szélesség, magasság) pixelben a teljes CAMERA_WIDTH x CAMERA_HEIGHT képen belül
-VISION_ROI_X = 400
-VISION_ROI_Y = 200
-VISION_ROI_W = 480
-VISION_ROI_H = 320
+# (x, y, szélesség, magasság) pixelben a teljes képen belül
+# Ha a ROI kilóg a frame méretéből, automatikusan szűkül a határig.
+#
+# 1280×720 (éles, Jetson CSI kamera):
+#   VISION_ROI_X, VISION_ROI_Y, VISION_ROI_W, VISION_ROI_H = 400, 200, 480, 320
+#
+# 458×458 (tesztvideó, négyzet arány):
+VISION_ROI_X = 29
+VISION_ROI_Y = 29
+VISION_ROI_W = 400
+VISION_ROI_H = 400
 
 # LED jellemzők
 VISION_LED_THRESHOLD   = 180   # Binarizálás küszöbértéke (0–255); fölötte = LED bekapcsolt

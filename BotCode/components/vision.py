@@ -142,11 +142,16 @@ class VisionProcessor:
         rw = settings.VISION_ROI_W
         rh = settings.VISION_ROI_H
 
-        # Bounds ellenőrzés
+        # Bounds ellenőrzés — automatikus szűkítés ha a ROI kilóg a frame-ből
         h, w = frame.shape[:2]
-        if rx + rw > w or ry + rh > h:
-            log.warning("ROI koordináták kívül esnek a frame méretén — ellenőrizd a settings-t")
+        if rx >= w or ry >= h:
+            log.warning(f"ROI origó ({rx},{ry}) kívül esik a {w}×{h} frame-en")
             return None
+        if rx + rw > w or ry + rh > h:
+            new_rw = min(rw, w - rx)
+            new_rh = min(rh, h - ry)
+            log.debug(f"ROI {rw}×{rh} → {new_rw}×{new_rh} (frame: {w}×{h})")
+            rw, rh = new_rw, new_rh
 
         roi = frame[ry : ry + rh, rx : rx + rw]
         gray = cv2.cvtColor(roi, cv2.COLOR_BGR2GRAY)
