@@ -22,7 +22,7 @@ luma.oled>=3.13.0
 # ── SPI / I2C (LoRa + OLED) ───────────────────────────────────────────────
 spidev>=3.6
 adafruit-blinka>=8.0.0
-adafruit-circuitpython-rfm9x>=2.4.0
+adafruit-circuitpython-rfm9x>=2.2.0
 
 # ── Soros port (IR LED vezérlés) ───────────────────────────────────────────
 pyserial>=3.5
