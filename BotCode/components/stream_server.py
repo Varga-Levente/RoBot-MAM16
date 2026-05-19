@@ -10,18 +10,30 @@ Két fő feladat:
        POST /offer      → WebRTC SDP offer/answer csere
        GET  /logs       → Server-Sent Events: Python log stream
        GET  /state      → aktuális robot státusz JSON
+       POST /api/debug  → debug annotáció be/ki
+
+Teszt UI (külön porton, --test-ui flag):
+       GET  /           → web_test/index.html
+       GET  /test/web/<file>
+       GET  /test/api/videos
+       POST /test/api/vision/start
+       POST /test/api/vision/stop
+       GET  /test/api/vision/stream   → MJPEG
+       GET  /test/api/vision/status
+       POST /test/api/ir/send
+       POST /test/api/motor/set
+       POST /test/api/motor/stop
 """
 
 import asyncio
 import fractions
-import json
 import logging
 import os
-import time
 from pathlib import Path
-from typing import Dict, Optional, Set
+from typing import Dict, List, Optional, Set
 
 import av
+import cv2
 import numpy as np
 from aiohttp import web
 from aiortc import RTCPeerConnection, RTCSessionDescription, VideoStreamTrack
@@ -32,9 +44,91 @@ from utils.logger import register_sse_client, unregister_sse_client
 
 log = logging.getLogger("stream")
 
-_WEB_DIR = Path(__file__).parent.parent / "web"
+_WEB_DIR      = Path(__file__).parent.parent / "web"
+_WEB_TEST_DIR = Path(__file__).parent.parent / "web_test"
+_VIDEOS_DIR   = Path.home() / "Videos"
+_VIDEO_EXTS   = {'.mp4', '.avi', '.mov', '.mkv', '.webm'}
 _VIDEO_CLOCK_RATE = 90000
 _VIDEO_PTIME = fractions.Fraction(1, settings.CAMERA_FPS)
+
+
+class _TestVisionRunner:
+    """Vision teszt futtatása videófájlon külön VisionProcessor példánnyal."""
+
+    def __init__(self):
+        self._task:           Optional[asyncio.Task] = None
+        self._running:        bool = False
+        self._last_frame:     Optional[np.ndarray] = None
+        self._detected_codes: List[str] = []
+        self._current_video:  str = ""
+        self._frame_count:    int = 0
+        self._processor              = None
+        self._blank: np.ndarray = self._make_blank()
+
+    @staticmethod
+    def _make_blank() -> np.ndarray:
+        img = np.zeros((360, 640, 3), dtype=np.uint8)
+        cv2.putText(img, "Nincs aktiv teszt",
+                    (140, 180), cv2.FONT_HERSHEY_SIMPLEX, 1.0, (70, 70, 70), 2)
+        return img
+
+    async def start(self, video_path: str) -> None:
+        await self.stop()
+        from components.vision import VisionProcessor
+        self._processor      = VisionProcessor()
+        self._detected_codes = []
+        self._current_video  = Path(video_path).name
+        self._frame_count    = 0
+        self._running        = True
+        self._task = asyncio.create_task(self._run(video_path))
+
+    async def _run(self, video_path: str) -> None:
+        from components.vision import VisionProcessor
+        cap = cv2.VideoCapture(str(video_path))
+        try:
+            fps      = cap.get(cv2.CAP_PROP_FPS) or 30.0
+            interval = 1.0 / max(fps, 1.0)
+            while self._running and cap.isOpened():
+                ret, frame = cap.read()
+                if not ret:
+                    cap.set(cv2.CAP_PROP_POS_FRAMES, 0)
+                    self._processor = VisionProcessor()
+                    await asyncio.sleep(0.1)
+                    continue
+                code = self._processor._process_frame(frame)
+                if code:
+                    self._detected_codes.append(code)
+                    log.info(f"[Vision teszt] kód: {code}")
+                self._last_frame  = self._processor.annotate(frame, self._processor._candidate)
+                self._frame_count += 1
+                await asyncio.sleep(interval)
+        except asyncio.CancelledError:
+            pass
+        finally:
+            cap.release()
+            self._running = False
+
+    async def stop(self) -> None:
+        self._running = False
+        if self._task and not self._task.done():
+            self._task.cancel()
+            try:
+                await self._task
+            except asyncio.CancelledError:
+                pass
+        self._task       = None
+        self._last_frame = None
+
+    def get_frame(self) -> np.ndarray:
+        return self._last_frame if self._last_frame is not None else self._blank
+
+    def status(self) -> dict:
+        return {
+            "running":        self._running,
+            "video":          self._current_video,
+            "frame_count":    self._frame_count,
+            "detected_codes": self._detected_codes[-50:],
+        }
 
 
 class _CameraVideoTrack(VideoStreamTrack):
@@ -70,18 +164,25 @@ class _CameraVideoTrack(VideoStreamTrack):
 
 class StreamServer:
     def __init__(self):
-        self._pcs: Set[RTCPeerConnection] = set()
-        self._relay: Optional[MediaRelay] = None
-        self._camera = None
-        self._state  = None
-        self._vision = None
+        self._pcs:         Set[RTCPeerConnection] = set()
+        self._relay:       Optional[MediaRelay]   = None
+        self._camera       = None
+        self._state        = None
+        self._vision       = None
+        self._motor        = None
+        self._ir           = None
+        self._test_runner  = _TestVisionRunner()
 
-    async def serve(self, camera, state, vision=None) -> None:
+    async def serve(self, camera, state, vision=None, motor=None, ir=None,
+                    enable_test_ui: bool = False) -> None:
         self._camera = camera
         self._state  = state
         self._vision = vision
+        self._motor  = motor
+        self._ir     = ir
         self._relay  = MediaRelay()
 
+        # ── Fő UI (port 8080) ──────────────────────────────────────────────
         app = web.Application()
         app.router.add_get("/",             self._index)
         app.router.add_get("/web/{file}",   self._static)
@@ -96,11 +197,32 @@ class StreamServer:
         await site.start()
         log.info(f"Web szerver elindult: http://0.0.0.0:{settings.STREAM_PORT}")
 
+        # ── Teszt UI (port 8081, --test-ui flag) ───────────────────────────
+        if enable_test_ui:
+            test_app = web.Application()
+            test_app.router.add_get("/",                         self._test_index)
+            test_app.router.add_get("/test/web/{file}",          self._test_static)
+            test_app.router.add_get("/state",                    self._state_handler)
+            test_app.router.add_get("/test/api/videos",          self._test_videos)
+            test_app.router.add_post("/test/api/vision/start",   self._test_vision_start)
+            test_app.router.add_post("/test/api/vision/stop",    self._test_vision_stop)
+            test_app.router.add_get("/test/api/vision/stream",   self._test_vision_stream)
+            test_app.router.add_get("/test/api/vision/status",   self._test_vision_status)
+            test_app.router.add_post("/test/api/ir/send",        self._test_ir_send)
+            test_app.router.add_post("/test/api/motor/set",      self._test_motor_set)
+            test_app.router.add_post("/test/api/motor/stop",     self._test_motor_stop)
+
+            test_runner = web.AppRunner(test_app)
+            await test_runner.setup()
+            test_site = web.TCPSite(test_runner, settings.STREAM_HOST, settings.TEST_UI_PORT)
+            await test_site.start()
+            log.info(f"Teszt UI elindult:  http://0.0.0.0:{settings.TEST_UI_PORT}")
+
         # Futás fenntartása
         while True:
             await asyncio.sleep(3600)
 
-    # ── HTTP route-ok ────────────────────────────────────────────────────────
+    # ── Fő UI route-ok ────────────────────────────────────────────────────────
 
     async def _index(self, request: web.Request) -> web.Response:
         html_path = _WEB_DIR / "index.html"
@@ -202,6 +324,97 @@ class StreamServer:
             self._state.debug_annotation = bool(data["annotation"])
             log.info(f"Debug annotáció: {'BE' if self._state.debug_annotation else 'KI'}")
         return web.json_response({"debug_annotation": self._state.debug_annotation})
+
+    # ── Teszt UI route-ok ─────────────────────────────────────────────────────
+
+    async def _test_index(self, request: web.Request) -> web.Response:
+        return web.FileResponse(_WEB_TEST_DIR / "index.html")
+
+    async def _test_static(self, request: web.Request) -> web.Response:
+        filename = request.match_info["file"]
+        file_path = _WEB_TEST_DIR / filename
+        if not file_path.exists() or not file_path.is_file():
+            raise web.HTTPNotFound()
+        return web.FileResponse(file_path)
+
+    async def _test_videos(self, request: web.Request) -> web.Response:
+        videos = []
+        if _VIDEOS_DIR.exists():
+            for f in sorted(_VIDEOS_DIR.iterdir()):
+                if f.is_file() and f.suffix.lower() in _VIDEO_EXTS:
+                    videos.append({"name": f.name, "size": f.stat().st_size})
+        return web.json_response({"videos": videos})
+
+    async def _test_vision_start(self, request: web.Request) -> web.Response:
+        data = await request.json()
+        filename = data.get("video", "")
+        if not filename:
+            return web.json_response({"error": "Hiányzó videó fájlnév"}, status=400)
+        video_path = _VIDEOS_DIR / filename
+        if not video_path.exists():
+            return web.json_response({"error": "Fájl nem található"}, status=404)
+        await self._test_runner.start(str(video_path))
+        return web.json_response({"ok": True})
+
+    async def _test_vision_stop(self, request: web.Request) -> web.Response:
+        await self._test_runner.stop()
+        return web.json_response({"ok": True})
+
+    async def _test_vision_stream(self, request: web.Request) -> web.StreamResponse:
+        """MJPEG stream a teszt vision annotált képéről."""
+        response = web.StreamResponse(
+            headers={
+                "Content-Type": "multipart/x-mixed-replace; boundary=frame",
+                "Cache-Control": "no-cache",
+                "Connection":    "keep-alive",
+            }
+        )
+        await response.prepare(request)
+        try:
+            while True:
+                frame = self._test_runner.get_frame()
+                ret, buf = cv2.imencode(".jpg", frame, [cv2.IMWRITE_JPEG_QUALITY, 80])
+                if ret:
+                    data = buf.tobytes()
+                    await response.write(
+                        b"--frame\r\nContent-Type: image/jpeg\r\n"
+                        b"Content-Length: " + str(len(data)).encode() + b"\r\n\r\n"
+                        + data + b"\r\n"
+                    )
+                await asyncio.sleep(1.0 / 25)
+        except (ConnectionResetError, Exception):
+            pass
+        return response
+
+    async def _test_vision_status(self, request: web.Request) -> web.Response:
+        return web.json_response(self._test_runner.status())
+
+    async def _test_ir_send(self, request: web.Request) -> web.Response:
+        data = await request.json()
+        code = data.get("code", "")
+        if len(code) != 3:
+            return web.json_response({"ok": False, "error": "Érvénytelen kód"}, status=400)
+        if self._ir is None:
+            return web.json_response({"ok": False, "error": "IR nem elérhető"}, status=503)
+        try:
+            await asyncio.get_event_loop().run_in_executor(None, self._ir.transmit, code)
+            return web.json_response({"ok": True})
+        except Exception as e:
+            return web.json_response({"ok": False, "error": str(e)}, status=500)
+
+    async def _test_motor_set(self, request: web.Request) -> web.Response:
+        data   = await request.json()
+        linear  = float(data.get("linear",  0.0))
+        angular = float(data.get("angular", 0.0))
+        if self._motor is None:
+            return web.json_response({"ok": False, "error": "Motor nem elérhető"}, status=503)
+        self._motor.set_velocity(linear, angular)
+        return web.json_response({"ok": True, "motor_speeds": self._state.motor_speeds})
+
+    async def _test_motor_stop(self, request: web.Request) -> web.Response:
+        if self._motor is not None:
+            self._motor.emergency_stop()
+        return web.json_response({"ok": True, "motor_speeds": [0.0, 0.0, 0.0, 0.0]})
 
 
 # ── Segédfüggvény: codec preferencia SDP módosítással ────────────────────────

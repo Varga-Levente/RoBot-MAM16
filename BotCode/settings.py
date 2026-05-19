@@ -150,6 +150,7 @@ STREAM_VIDEO_BITRATE = 1_500_000                       # Videó bitrate (bps)
 STREAM_STUN_SERVER = "stun:stun.l.google.com:19302"   # "" = csak lokális ICE kandidátok
 
 STREAM_ICE_TIMEOUT = 5     # ICE összeköttetés időtúllépése másodpercben
+TEST_UI_PORT       = 8081  # Teszt UI port (--test-ui flag esetén)
 
 # ── LOGGING ───────────────────────────────────────────────────────────────────
 # Naplózás fájlba és a web UI-ba (SSE)

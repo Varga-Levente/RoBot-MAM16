@@ -7,6 +7,7 @@ Indítás:
   python main.py --test-video kapu.mp4          # Videófájl kamera helyett
   python main.py --role GHOST                   # Szerep felülírása
   python main.py --test-video kapu.mp4 --dry-run  # Kombinált teszt
+  python main.py --test-ui                         # Teszt UI a 8081-es porton
 """
 
 import argparse
@@ -108,11 +109,16 @@ async def main(args: argparse.Namespace) -> None:
                             name="motor"),
         asyncio.create_task(oled.update_loop(state),
                             name="oled"),
-        asyncio.create_task(stream.serve(camera, state, vision),
-                            name="stream"),
+        asyncio.create_task(
+            stream.serve(camera, state, vision, motor, ir,
+                         enable_test_ui=args.test_ui),
+            name="stream",
+        ),
     ]
 
     log.info(f"Web UI elérhető: http://{state.ip_address}:{settings.STREAM_PORT}")
+    if args.test_ui:
+        log.info(f"Teszt UI elérhető: http://{state.ip_address}:{settings.TEST_UI_PORT}")
     log.info("Robot futásban. Ctrl+C a leállításhoz.")
 
     # ── Leállítás kezelése ─────────────────────────────────────────────────
@@ -158,6 +164,10 @@ if __name__ == "__main__":
     parser.add_argument(
         "--role", choices=["PACMAN", "GHOST"],
         help="Szerep felülírása induláskor"
+    )
+    parser.add_argument(
+        "--test-ui", action="store_true",
+        help=f"Teszt UI indítása a {settings.TEST_UI_PORT}-es porton (vision/IR/motor teszteléshez)"
     )
     args = parser.parse_args()
     asyncio.run(main(args))

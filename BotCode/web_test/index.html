@@ -1,0 +1,154 @@
+<!DOCTYPE html>
+<html lang="hu">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>MAM16 — Tesztelő</title>
+  <link rel="stylesheet" href="/test/web/style.css">
+</head>
+<body>
+<div class="app">
+
+  <!-- Bal oldali navigáció -->
+  <nav class="sidebar">
+    <div class="sidebar-header">
+      <div class="sidebar-title">MAM16</div>
+      <div class="sidebar-subtitle">Tesztelő</div>
+    </div>
+    <ul class="nav-list">
+      <li><button class="nav-btn active" data-panel="vision">Vision</button></li>
+      <li><button class="nav-btn" data-panel="ir">IR Adó</button></li>
+      <li><button class="nav-btn" data-panel="motor">Motorok</button></li>
+      <li><button class="nav-btn" data-panel="lora">LoRa</button></li>
+    </ul>
+    <a class="sidebar-link" href="http://localhost:8080">← Fő nézet</a>
+  </nav>
+
+  <!-- Fő tartalom -->
+  <main class="main">
+
+    <!-- ── Vision panel ── -->
+    <section class="panel active" id="panel-vision">
+      <div class="panel-top">
+        <h2 class="panel-title">Vision Teszt</h2>
+        <span class="badge" id="vision-badge">Leállítva</span>
+      </div>
+      <div class="vision-layout">
+
+        <!-- Bal: videólista + stream -->
+        <div class="vision-left">
+          <div class="card">
+            <div class="card-head">
+              <span class="card-title">Videó fájlok <em>~/Videos/</em></span>
+              <button class="icon-btn" onclick="loadVideos()" title="Frissítés">↺</button>
+            </div>
+            <ul class="file-list" id="file-list">
+              <li class="file-placeholder">Betöltés...</li>
+            </ul>
+          </div>
+
+          <div class="card stream-card">
+            <div class="card-head">
+              <span class="card-title">Annotált kép</span>
+              <span class="frame-count" id="frame-count">0 frame</span>
+            </div>
+            <div class="stream-box">
+              <img id="stream-img" src="" alt="" class="stream-img hidden">
+              <div class="stream-placeholder" id="stream-placeholder">Válassz videót és nyomj ▶</div>
+            </div>
+            <div class="card-foot">
+              <button class="btn btn-danger" id="btn-stop" onclick="stopVision()" disabled>■ Stop</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Jobb: felismert kódok -->
+        <div class="vision-right">
+          <div class="card codes-card">
+            <div class="card-head">
+              <span class="card-title">Felismert kódok</span>
+              <button class="icon-btn" onclick="clearCodes()">Törlés</button>
+            </div>
+            <ul class="code-list" id="code-list">
+              <li class="file-placeholder">Még nincs kód</li>
+            </ul>
+          </div>
+        </div>
+
+      </div>
+    </section>
+
+    <!-- ── IR panel ── -->
+    <section class="panel" id="panel-ir">
+      <div class="panel-top">
+        <h2 class="panel-title">IR Adó Teszt</h2>
+      </div>
+      <div class="single-col">
+        <div class="card">
+          <div class="card-head"><span class="card-title">Manuális küldés</span></div>
+          <div class="form-group">
+            <label>Kód (3 hex jegy):</label>
+            <div class="input-row">
+              <input type="text" id="ir-input" class="code-input" maxlength="3"
+                     placeholder="CA6"
+                     oninput="this.value=this.value.toUpperCase().replace(/[^0-9A-F]/g,'')"
+                     onkeydown="if(event.key==='Enter')sendIR()">
+              <button class="btn btn-primary" onclick="sendIR()">Küldés</button>
+            </div>
+          </div>
+          <div class="log-box" id="ir-log"></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ── Motor panel ── -->
+    <section class="panel" id="panel-motor">
+      <div class="panel-top">
+        <h2 class="panel-title">Motor Teszt</h2>
+      </div>
+      <div class="single-col">
+        <div class="card">
+          <div class="card-head"><span class="card-title">Differenciálhajtás</span></div>
+          <div class="slider-group">
+            <div class="slider-row">
+              <label>Lineáris: <b id="lbl-linear">0.00</b></label>
+              <input type="range" id="sld-linear" min="-100" max="100" value="0" oninput="onSlider()">
+            </div>
+            <div class="slider-row">
+              <label>Szögsebesség: <b id="lbl-angular">0.00</b></label>
+              <input type="range" id="sld-angular" min="-100" max="100" value="0" oninput="onSlider()">
+            </div>
+          </div>
+          <div class="motor-bars">
+            <div class="mbar-row"><span class="mbar-lbl">FL</span><div class="mbar-wrap"><div class="mbar" id="mb-0"></div></div><span class="mbar-val" id="mv-0">0.00</span></div>
+            <div class="mbar-row"><span class="mbar-lbl">FR</span><div class="mbar-wrap"><div class="mbar" id="mb-1"></div></div><span class="mbar-val" id="mv-1">0.00</span></div>
+            <div class="mbar-row"><span class="mbar-lbl">RL</span><div class="mbar-wrap"><div class="mbar" id="mb-2"></div></div><span class="mbar-val" id="mv-2">0.00</span></div>
+            <div class="mbar-row"><span class="mbar-lbl">RR</span><div class="mbar-wrap"><div class="mbar" id="mb-3"></div></div><span class="mbar-val" id="mv-3">0.00</span></div>
+          </div>
+          <div class="card-foot">
+            <button class="btn btn-danger" onclick="stopMotors()">■ Stop (összes motor)</button>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ── LoRa panel ── -->
+    <section class="panel" id="panel-lora">
+      <div class="panel-top">
+        <h2 class="panel-title">LoRa Státusz</h2>
+      </div>
+      <div class="single-col">
+        <div class="card">
+          <div class="card-head"><span class="card-title">Kapcsolat</span></div>
+          <div class="stat-table">
+            <div class="stat-row"><span class="stat-lbl">Státusz</span><span class="stat-val" id="lora-conn">—</span></div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+  </main>
+</div>
+<script src="/test/web/app.js"></script>
+</body>
+</html>
