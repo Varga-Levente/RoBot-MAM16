@@ -51,10 +51,18 @@ async function pollStatus() {
     document.getElementById('val-linear').textContent  = st.linear.toFixed(3);
     document.getElementById('val-angular').textContent = st.angular.toFixed(3);
 
-    const rt = Math.max(0,  st.linear);
-    const lt = Math.max(0, -st.linear);
-    document.getElementById('rt-fill').style.width = (rt * 100) + '%';
-    document.getElementById('lt-fill').style.width = (lt * 100) + '%';
+    // Raw triggerek (függőleges kitöltés alulról)
+    const ltPct = Math.round((st.lt || 0) * 100);
+    const rtPct = Math.round((st.rt || 0) * 100);
+    document.getElementById('lt-fill').style.height = ltPct + '%';
+    document.getElementById('rt-fill').style.height = rtPct + '%';
+    document.getElementById('lt-pct').textContent = ltPct + '%';
+    document.getElementById('rt-pct').textContent = rtPct + '%';
+
+    // Bal stick X csúszka
+    const sx = st.stick_x || 0;
+    document.getElementById('stick-knob').style.left = ((sx + 1) / 2 * 100) + '%';
+    document.getElementById('val-stick-x').textContent = sx.toFixed(3);
 
     drawJoystick(st.linear, st.angular);
   } catch (_) {}

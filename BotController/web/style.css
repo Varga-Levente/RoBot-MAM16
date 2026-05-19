@@ -142,50 +142,97 @@ select:focus { border-color: var(--accent); }
 
 select option { background: #1e1e2e; }
 
-/* ── Joystick visualizer ────────────────────────────────────────────────── */
-.joystick-wrap {
+/* ── Kontroller vizualizáció ────────────────────────────────────────────── */
+.ctrl-visual {
   display: flex;
-  gap: 16px;
+  align-items: flex-end;
+  gap: 12px;
+  margin-bottom: 14px;
+}
+
+/* Trigger (függőleges) */
+.trig-col {
+  display: flex;
+  flex-direction: column;
   align-items: center;
-  margin-bottom: 8px;
+  gap: 6px;
+  flex: 0 0 40px;
 }
-
-.joystick-canvas-wrap {
-  position: relative;
-  width: 80px; height: 80px;
-  flex-shrink: 0;
+.trig-track {
+  width: 24px;
+  height: 88px;
+  background: rgba(0,0,0,0.35);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  overflow: hidden;
+  display: flex;
+  align-items: flex-end;
 }
+.trig-fill {
+  width: 100%;
+  height: 0%;
+  border-radius: 12px;
+  transition: height 0.05s;
+}
+.trig-lt { background: var(--warning); box-shadow: 0 0 8px rgba(251,146,60,0.4); }
+.trig-rt { background: var(--accent2); box-shadow: 0 0 8px rgba(167,139,250,0.4); }
+.trig-footer { text-align: center; }
+.trig-name { display: block; font-size: 11px; font-weight: 700; color: var(--muted); }
+.trig-pct  { display: block; font-size: 12px; font-variant-numeric: tabular-nums; color: var(--text); }
 
+/* Joystick canvas */
+.joy-col {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+}
 canvas.joy {
-  width: 80px; height: 80px;
+  width: 88px; height: 88px;
   border-radius: 50%;
   background: rgba(0,0,0,0.3);
   border: 1px solid var(--border);
 }
+.joy-vals { width: 100%; }
+.joy-vals div { display: flex; justify-content: space-between; margin: 3px 0; font-size: 12px; }
+.jv-lbl { color: var(--muted); }
+.jv-val { color: var(--text); font-weight: 600; font-variant-numeric: tabular-nums; }
 
-.axis-values { flex: 1; }
-.axis-values div { margin: 4px 0; font-size: 12px; color: var(--muted); }
-.axis-values span { color: var(--text); font-weight: 600; font-variant-numeric: tabular-nums; }
-
-/* ── Trigger bars ───────────────────────────────────────────────────────── */
-.trigger-row { display: flex; gap: 12px; margin-top: 8px; }
-.trigger-item { flex: 1; }
-.trigger-item label { font-size: 11px; }
-.trigger-bar {
-  height: 6px;
-  background: var(--border);
-  border-radius: 3px;
-  overflow: hidden;
+/* Bal stick X csúszka */
+.stick-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
   margin-top: 4px;
 }
-.trigger-fill {
-  height: 100%;
-  width: 0%;
-  border-radius: 3px;
-  background: var(--accent2);
-  transition: width 0.05s;
+.stick-lbl { font-size: 11px; color: var(--muted); flex-shrink: 0; }
+.stick-track {
+  flex: 1;
+  height: 20px;
+  position: relative;
+  background: rgba(0,0,0,0.3);
+  border: 1px solid var(--border);
+  border-radius: 10px;
 }
-#lt-fill { background: var(--warning); }
+.stick-center-line {
+  position: absolute;
+  left: 50%; top: 20%;
+  width: 1px; height: 60%;
+  background: rgba(255,255,255,0.2);
+  transform: translateX(-50%);
+}
+.stick-knob {
+  position: absolute;
+  top: 50%; left: 50%;
+  width: 14px; height: 14px;
+  border-radius: 50%;
+  background: var(--accent);
+  box-shadow: 0 0 6px rgba(96,165,250,0.6);
+  transform: translate(-50%, -50%);
+  transition: left 0.05s;
+}
+.stick-val { font-size: 12px; font-variant-numeric: tabular-nums; color: var(--text); font-weight: 600; flex-shrink: 0; width: 42px; text-align: right; }
 
 /* ── Buttons ────────────────────────────────────────────────────────────── */
 .btn-row {

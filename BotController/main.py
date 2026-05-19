@@ -22,11 +22,14 @@ from lora_sender      import LoraSender
 
 @dataclass
 class ControllerState:
-    gamepad_connected:    bool  = False
-    lora_authenticated:   bool  = False
-    linear:               float = 0.0
-    angular:              float = 0.0
-    lora_reinit_requested: bool = False
+    gamepad_connected:     bool  = False
+    lora_authenticated:    bool  = False
+    linear:                float = 0.0
+    angular:               float = 0.0
+    lt:                    float = 0.0
+    rt:                    float = 0.0
+    stick_x:               float = 0.0
+    lora_reinit_requested: bool  = False
 
 
 def _setup_logger() -> logging.Logger:
@@ -95,6 +98,9 @@ async def control_loop(
 
         state.linear  = linear
         state.angular = angular
+        state.lt      = gamepad.raw_lt
+        state.rt      = gamepad.raw_rt
+        state.stick_x = gamepad.raw_steer
 
         if dry_run:
             if linear or angular:

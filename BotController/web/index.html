@@ -20,27 +20,54 @@
 
 <div class="grid">
 
-  <!-- Joystick live preview -->
+  <!-- Kontroller vizualizáció -->
   <div class="card">
-    <h2>Valós idejű állapot</h2>
-    <div class="joystick-wrap">
-      <div class="joystick-canvas-wrap">
-        <canvas class="joy" id="joy-canvas" width="80" height="80"></canvas>
+    <h2>Kontroller állapot</h2>
+
+    <!-- Triggerek + joystick egy sorban -->
+    <div class="ctrl-visual">
+
+      <!-- LT trigger (függőleges) -->
+      <div class="trig-col">
+        <div class="trig-track">
+          <div class="trig-fill trig-lt" id="lt-fill"></div>
+        </div>
+        <div class="trig-footer">
+          <span class="trig-name">LT</span>
+          <span class="trig-pct" id="lt-pct">0%</span>
+        </div>
       </div>
-      <div class="axis-values">
-        <div>Linear: <span id="val-linear">0.000</span></div>
-        <div>Angular: <span id="val-angular">0.000</span></div>
+
+      <!-- Joystick 2D (közép) -->
+      <div class="joy-col">
+        <canvas class="joy" id="joy-canvas" width="88" height="88"></canvas>
+        <div class="joy-vals">
+          <div><span class="jv-lbl">Lin</span><span class="jv-val" id="val-linear">0.000</span></div>
+          <div><span class="jv-lbl">Ang</span><span class="jv-val" id="val-angular">0.000</span></div>
+        </div>
       </div>
+
+      <!-- RT trigger (függőleges) -->
+      <div class="trig-col">
+        <div class="trig-track">
+          <div class="trig-fill trig-rt" id="rt-fill"></div>
+        </div>
+        <div class="trig-footer">
+          <span class="trig-name">RT</span>
+          <span class="trig-pct" id="rt-pct">0%</span>
+        </div>
+      </div>
+
     </div>
-    <div class="trigger-row">
-      <div class="trigger-item">
-        <label>LT (hátra)</label>
-        <div class="trigger-bar"><div class="trigger-fill" id="lt-fill"></div></div>
+
+    <!-- Bal stick X csúszka -->
+    <div class="stick-row">
+      <span class="stick-lbl">Bal stick</span>
+      <div class="stick-track">
+        <div class="stick-center-line"></div>
+        <div class="stick-knob" id="stick-knob"></div>
       </div>
-      <div class="trigger-item">
-        <label>RT (előre)</label>
-        <div class="trigger-bar"><div class="trigger-fill" id="rt-fill"></div></div>
-      </div>
+      <span class="stick-val" id="val-stick-x">0.000</span>
     </div>
   </div>
 

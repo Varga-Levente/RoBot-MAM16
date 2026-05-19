@@ -129,10 +129,13 @@ class ControllerWebServer:
     async def _get_status(self, request: web.Request) -> web.Response:
         st = self._state
         return web.json_response({
-            "gamepad_connected": st.gamepad_connected if st else False,
+            "gamepad_connected":  st.gamepad_connected  if st else False,
             "lora_authenticated": st.lora_authenticated if st else False,
-            "linear":  round(st.linear,  3) if st else 0.0,
-            "angular": round(st.angular, 3) if st else 0.0,
+            "linear":   round(st.linear,  3) if st else 0.0,
+            "angular":  round(st.angular, 3) if st else 0.0,
+            "lt":       round(st.lt,      3) if st else 0.0,
+            "rt":       round(st.rt,      3) if st else 0.0,
+            "stick_x":  round(st.stick_x, 3) if st else 0.0,
             "speed_limit": settings.CTRL_SPEED_LIMIT,
         })
 

@@ -32,7 +32,10 @@ class GamepadReader:
     def __init__(self):
         self._dev   = None
         self._state = {self._AXIS_X: 0, self._AXIS_LT: 0, self._AXIS_RT: 0}
-        self._ranges: dict[int, tuple[int, int]] = {}
+        self._ranges: dict = {}
+        self.raw_lt:    float = 0.0
+        self.raw_rt:    float = 0.0
+        self.raw_steer: float = 0.0
 
     # ── Eszköz keresés / megnyitás ──────────────────────────────────────────
 
@@ -121,9 +124,13 @@ class GamepadReader:
         dz    = settings.CTRL_DEADZONE
         limit = settings.CTRL_SPEED_LIMIT
 
-        rt      = self._norm_axis(self._AXIS_RT, self._state[self._AXIS_RT], signed=False)
-        lt      = self._norm_axis(self._AXIS_LT, self._state[self._AXIS_LT], signed=False)
-        steer   = self._norm_axis(self._AXIS_X,  self._state[self._AXIS_X],  signed=True)
+        rt    = self._norm_axis(self._AXIS_RT, self._state[self._AXIS_RT], signed=False)
+        lt    = self._norm_axis(self._AXIS_LT, self._state[self._AXIS_LT], signed=False)
+        steer = self._norm_axis(self._AXIS_X,  self._state[self._AXIS_X],  signed=True)
+
+        self.raw_rt    = rt
+        self.raw_lt    = lt
+        self.raw_steer = steer
 
         linear  = self._deadzone(rt - lt, dz) * limit
         angular = self._deadzone(steer,   dz) * limit
