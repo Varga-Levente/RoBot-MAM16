@@ -4,10 +4,12 @@
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 BOTCODE="$SCRIPT_DIR/BotCode"
 PY="python3.8"
+VIDEOS_DIR="$HOME/Videos"
 
 C_CYAN='\033[0;36m'
 C_YELLOW='\033[1;33m'
 C_GREEN='\033[0;32m'
+C_RED='\033[0;31m'
 C_GRAY='\033[0;90m'
 C_BOLD='\033[1m'
 C_OFF='\033[0m'
@@ -26,8 +28,7 @@ header() {
     echo ""
 }
 
-# GPU-mód almenü, majd indítás
-# $1 = leírás, $2 = python argumentumok
+# ── GPU/CPU almenü + indítás ──────────────────────────────────────────────────
 launch_menu() {
     local label="$1"
     local args="$2"
@@ -46,20 +47,18 @@ launch_menu() {
     case "$m" in
         1)
             unset CUDA_VISIBLE_DEVICES
-            echo -e "   ${C_GREEN}Indítás: $PY $args  [GPU mód]${C_OFF}"
+            echo -e "   ${C_GREEN}Indítás: $PY $args  [GPU]${C_OFF}"
             echo ""
             cd "$BOTCODE" && $PY $args
             ;;
         2)
             export CUDA_VISIBLE_DEVICES=""
-            echo -e "   ${C_GREEN}Indítás: $PY $args  [CPU mód]${C_OFF}"
+            echo -e "   ${C_GREEN}Indítás: $PY $args  [CPU]${C_OFF}"
             echo ""
             cd "$BOTCODE" && $PY $args
             unset CUDA_VISIBLE_DEVICES
             ;;
-        b|B)
-            return
-            ;;
+        b|B) return ;;
         *)
             echo -e "   ${C_GRAY}Érvénytelen választás.${C_OFF}"
             sleep 1
@@ -70,7 +69,110 @@ launch_menu() {
     read -rp "   Nyomj Entert a főmenühöz..." _
 }
 
-# Főmenü
+# ── Vision teszt menü ─────────────────────────────────────────────────────────
+vision_test_menu() {
+    # 1. Videó választás
+    header
+    echo -e "   ${C_BOLD}Vision teszt — videó választás${C_OFF}"
+    echo ""
+
+    if [ ! -d "$VIDEOS_DIR" ]; then
+        echo -e "   ${C_RED}Nem található a könyvtár: $VIDEOS_DIR${C_OFF}"
+        echo ""
+        read -rp "   Nyomj Entert a főmenühöz..." _
+        return
+    fi
+
+    mapfile -t videos < <(find "$VIDEOS_DIR" -maxdepth 1 -type f \
+        \( -iname "*.mp4" -o -iname "*.avi" -o -iname "*.mkv" -o -iname "*.mov" \) \
+        | sort)
+
+    if [ ${#videos[@]} -eq 0 ]; then
+        echo -e "   ${C_RED}Nincs videófájl a $VIDEOS_DIR könyvtárban.${C_OFF}"
+        echo ""
+        read -rp "   Nyomj Entert a főmenühöz..." _
+        return
+    fi
+
+    for i in "${!videos[@]}"; do
+        printf "     %2d) %s\n" $((i+1)) "$(basename "${videos[$i]}")"
+    done
+    echo ""
+    echo -e "     ${C_GRAY}b) Vissza${C_OFF}"
+    echo ""
+    read -rp "   Videó száma: " vsel
+
+    [[ "$vsel" =~ ^[bB]$ ]] && return
+    if ! [[ "$vsel" =~ ^[0-9]+$ ]] || \
+       [ "$vsel" -lt 1 ] || [ "$vsel" -gt "${#videos[@]}" ]; then
+        echo -e "   ${C_GRAY}Érvénytelen választás.${C_OFF}"
+        sleep 1
+        return
+    fi
+
+    local video="${videos[$((vsel-1))]}"
+
+    # 2. Loop szám
+    header
+    echo -e "   ${C_BOLD}Vision teszt — ismétlések${C_OFF}"
+    echo ""
+    echo -e "   Kiválasztott videó: ${C_CYAN}$(basename "$video")${C_OFF}"
+    echo ""
+    read -rp "   Hányszor játssza le? [1]: " loops
+    loops="${loops:-1}"
+    if ! [[ "$loops" =~ ^[0-9]+$ ]] || [ "$loops" -lt 1 ]; then
+        echo -e "   ${C_GRAY}Érvénytelen szám, 1 lesz.${C_OFF}"
+        loops=1
+        sleep 1
+    fi
+
+    # 3. CUDA / CPU
+    header
+    echo -e "   ${C_BOLD}Vision teszt — feldolgozási mód${C_OFF}"
+    echo ""
+    echo -e "   Videó : ${C_CYAN}$(basename "$video")${C_OFF}"
+    echo -e "   Loops : ${C_CYAN}${loops}×${C_OFF}"
+    echo ""
+    echo "     1) GPU — CUDA"
+    echo "     2) CPU — csak processzor"
+    echo "     b) Vissza"
+    echo ""
+    read -rp "   Választás: " m
+
+    [[ "$m" =~ ^[bB]$ ]] && return
+
+    local no_cuda_flag=""
+    local mode_label=""
+    case "$m" in
+        1) unset CUDA_VISIBLE_DEVICES;  mode_label="GPU (CUDA)" ;;
+        2) export CUDA_VISIBLE_DEVICES=""; no_cuda_flag="--no-cuda"; mode_label="CPU" ;;
+        *)
+            echo -e "   ${C_GRAY}Érvénytelen választás.${C_OFF}"
+            sleep 1
+            return
+            ;;
+    esac
+
+    # 4. Futtatás
+    header
+    echo -e "   ${C_BOLD}Vision teszt${C_OFF}"
+    echo -e "   Videó : ${C_CYAN}$(basename "$video")${C_OFF}"
+    echo -e "   Loops : ${C_CYAN}${loops}×${C_OFF}"
+    echo -e "   Mód   : ${C_CYAN}${mode_label}${C_OFF}"
+    echo ""
+
+    cd "$BOTCODE" && $PY bench_vision.py \
+        --video "$video" \
+        --loops "$loops" \
+        $no_cuda_flag
+
+    unset CUDA_VISIBLE_DEVICES
+
+    echo ""
+    read -rp "   Nyomj Entert a főmenühöz..." _
+}
+
+# ── Főmenü ────────────────────────────────────────────────────────────────────
 while true; do
     header
     echo -e "   ${C_BOLD}Indítási mód:${C_OFF}"
@@ -78,15 +180,17 @@ while true; do
     echo "     1) Normál indítás"
     echo "     2) Teszt UI-s indítás          (--test-ui)"
     echo "     3) Teszt UI + dry-run          (--test-ui --dry-run)"
+    echo "     4) Vision teszt"
     echo ""
     echo -e "     ${C_GRAY}q) Kilépés${C_OFF}"
     echo ""
     read -rp "   Választás: " choice
 
     case "$choice" in
-        1) launch_menu "Normál indítás" "main.py" ;;
-        2) launch_menu "Teszt UI-s indítás" "main.py --test-ui" ;;
-        3) launch_menu "Teszt UI + dry-run" "main.py --test-ui --dry-run" ;;
+        1) launch_menu "Normál indítás"       "main.py" ;;
+        2) launch_menu "Teszt UI-s indítás"   "main.py --test-ui" ;;
+        3) launch_menu "Teszt UI + dry-run"   "main.py --test-ui --dry-run" ;;
+        4) vision_test_menu ;;
         q|Q)
             echo ""
             echo -e "   ${C_GRAY}Viszlát!${C_OFF}"
