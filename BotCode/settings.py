@@ -1,12 +1,12 @@
 # =============================================================================
-#  MAM16 Robot - Beállítások
+#  RoBot - Beállítások
 #  Minden hangolható paraméter itt található, szekciókra bontva.
 # =============================================================================
 
 # ── ROBOT ─────────────────────────────────────────────────────────────────────
 # Általános robot azonosítás és üzemmód
 
-ROBOT_NAME = "MAM16"
+ROBOT_NAME = "RoBot"
 ROBOT_ROLE = "PACMAN"   # "PACMAN" | "GHOST"
 DRY_RUN    = False       # True = hardver nélküli szimulációs mód (CLI --dry-run is beállítja)
 

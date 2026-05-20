@@ -1,5 +1,5 @@
 # =============================================================================
-#  MAM16 BotController - Beállítások
+#  RoBot BotController - Beállítások
 #  FONTOS: A LORA_* értékek azonosak kell legyenek a BotCode/settings.py-val!
 #  A CTRL_* értékek felülírhatók config.json-nal (POST /api/settings).
 # =============================================================================

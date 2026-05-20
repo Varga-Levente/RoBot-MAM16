@@ -1,5 +1,5 @@
 """
-MAM16 BotController — Főprogram
+RoBot BotController — Főprogram
 
 Indítás:
   python main.py                        # Normál mód
@@ -148,7 +148,7 @@ async def main(args: argparse.Namespace) -> None:
 
     log = _setup_logger()
     log.info("=" * 50)
-    log.info("  MAM16 BotController")
+    log.info("  RoBot BotController")
     log.info(f"  Sebesség limit: {settings.CTRL_SPEED_LIMIT * 100:.0f}%")
     if args.dry_run:
         log.warning("  *** DRY-RUN MÓD — hardver kikapcsolva ***")
@@ -201,7 +201,7 @@ async def main(args: argparse.Namespace) -> None:
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(
-        description="MAM16 BotController",
+        description="RoBot BotController",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog=__doc__,
     )

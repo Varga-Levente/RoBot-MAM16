@@ -1,5 +1,5 @@
 """
-MAM16 Robot - Főprogram
+RoBot - Főprogram
 
 Indítás:
   python main.py                                # Teljes robot üzemmód
@@ -149,7 +149,7 @@ async def main(args: argparse.Namespace) -> None:
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(
-        description=f"MAM16 Robot vezérlő",
+        description=f"RoBot vezérlő",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog=__doc__,
     )
