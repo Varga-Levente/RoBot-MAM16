@@ -197,15 +197,10 @@ vision_test_menu() {
     echo ""
 
     if [ "$random_mode" = true ]; then
-        local n="${#videos[@]}"
-        for (( i=1; i<=det_count; i++ )); do
-            local rand_video="${videos[$((RANDOM % n))]}"
-            echo -e "   ${C_GRAY}[$i/$det_count]${C_OFF} ${C_CYAN}$(basename "$rand_video")${C_OFF}"
-            cd "$BOTCODE" && $PY bench_vision.py \
-                --video "$rand_video" \
-                --loops 1 \
-                $no_cuda_flag
-        done
+        cd "$BOTCODE" && $PY bench_vision.py \
+            --video-dir "$VIDEOS_DIR" \
+            --random-count "$det_count" \
+            $no_cuda_flag
     else
         cd "$BOTCODE" && $PY bench_vision.py \
             --video "$video" \

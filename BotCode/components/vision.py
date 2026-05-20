@@ -76,6 +76,16 @@ class VisionProcessor:
                 log.warning(f"CUDA inicializálás sikertelen, CPU módra visszaesés: {e}")
                 self._cuda_ok = False
 
+    def reset(self) -> None:
+        self._state          = _State.WAIT_FOR_F
+        self._digits.clear()
+        self._last_digit     = None
+        self._cooldown_until = 0.0
+        self._stable_count   = 0
+        self._candidate      = None
+        self._last_circle    = None
+        self._last_annotated = None
+
     async def processing_loop(
         self,
         camera,
