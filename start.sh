@@ -98,40 +98,70 @@ vision_test_menu() {
         printf "     %2d) %s\n" $((i+1)) "$(basename "${videos[$i]}")"
     done
     echo ""
+    echo -e "     ${C_CYAN}r) Véletlenszerű (minden futtatás más videó)${C_OFF}"
     echo -e "     ${C_GRAY}b) Vissza${C_OFF}"
     echo ""
-    read -rp "   Videó száma: " vsel
+    read -rp "   Videó száma (vagy r): " vsel
 
     [[ "$vsel" =~ ^[bB]$ ]] && return
-    if ! [[ "$vsel" =~ ^[0-9]+$ ]] || \
-       [ "$vsel" -lt 1 ] || [ "$vsel" -gt "${#videos[@]}" ]; then
+
+    local random_mode=false
+    local video=""
+
+    if [[ "$vsel" =~ ^[rR]$ ]]; then
+        random_mode=true
+    elif [[ "$vsel" =~ ^[0-9]+$ ]] && \
+         [ "$vsel" -ge 1 ] && [ "$vsel" -le "${#videos[@]}" ]; then
+        video="${videos[$((vsel-1))]}"
+    else
         echo -e "   ${C_GRAY}Érvénytelen választás.${C_OFF}"
         sleep 1
         return
     fi
 
-    local video="${videos[$((vsel-1))]}"
+    # 2a. Konkrét videó → loop szám
+    if [ "$random_mode" = false ]; then
+        header
+        echo -e "   ${C_BOLD}Vision teszt — ismétlések${C_OFF}"
+        echo ""
+        echo -e "   Kiválasztott videó: ${C_CYAN}$(basename "$video")${C_OFF}"
+        echo ""
+        read -rp "   Hányszor játssza le? [1]: " loops
+        loops="${loops:-1}"
+        if ! [[ "$loops" =~ ^[0-9]+$ ]] || [ "$loops" -lt 1 ]; then
+            echo -e "   ${C_GRAY}Érvénytelen szám, 1 lesz.${C_OFF}"
+            loops=1
+            sleep 1
+        fi
+    fi
 
-    # 2. Loop szám
-    header
-    echo -e "   ${C_BOLD}Vision teszt — ismétlések${C_OFF}"
-    echo ""
-    echo -e "   Kiválasztott videó: ${C_CYAN}$(basename "$video")${C_OFF}"
-    echo ""
-    read -rp "   Hányszor játssza le? [1]: " loops
-    loops="${loops:-1}"
-    if ! [[ "$loops" =~ ^[0-9]+$ ]] || [ "$loops" -lt 1 ]; then
-        echo -e "   ${C_GRAY}Érvénytelen szám, 1 lesz.${C_OFF}"
-        loops=1
-        sleep 1
+    # 2b. Random → detect count
+    if [ "$random_mode" = true ]; then
+        header
+        echo -e "   ${C_BOLD}Vision teszt — véletlenszerű mód${C_OFF}"
+        echo ""
+        echo -e "   Videók száma: ${C_CYAN}${#videos[@]} db${C_OFF}"
+        echo ""
+        read -rp "   Hány detektálást futtasson? [10]: " det_count
+        det_count="${det_count:-10}"
+        if ! [[ "$det_count" =~ ^[0-9]+$ ]] || [ "$det_count" -lt 1 ]; then
+            echo -e "   ${C_GRAY}Érvénytelen szám, 10 lesz.${C_OFF}"
+            det_count=10
+            sleep 1
+        fi
     fi
 
     # 3. CUDA / CPU
     header
     echo -e "   ${C_BOLD}Vision teszt — feldolgozási mód${C_OFF}"
     echo ""
-    echo -e "   Videó : ${C_CYAN}$(basename "$video")${C_OFF}"
-    echo -e "   Loops : ${C_CYAN}${loops}×${C_OFF}"
+    if [ "$random_mode" = true ]; then
+        echo -e "   Mód      : ${C_CYAN}Véletlenszerű${C_OFF}"
+        echo -e "   Detektálás: ${C_CYAN}${det_count}×${C_OFF}"
+    else
+        echo -e "   Videó : ${C_CYAN}$(basename "$video")${C_OFF}"
+        echo -e "   Loops : ${C_CYAN}${loops}×${C_OFF}"
+    fi
     echo ""
     echo "     1) GPU — CUDA"
     echo "     2) CPU — csak processzor"
@@ -156,15 +186,32 @@ vision_test_menu() {
     # 4. Futtatás
     header
     echo -e "   ${C_BOLD}Vision teszt${C_OFF}"
-    echo -e "   Videó : ${C_CYAN}$(basename "$video")${C_OFF}"
-    echo -e "   Loops : ${C_CYAN}${loops}×${C_OFF}"
-    echo -e "   Mód   : ${C_CYAN}${mode_label}${C_OFF}"
+    if [ "$random_mode" = true ]; then
+        echo -e "   Mód       : ${C_CYAN}Véletlenszerű${C_OFF}"
+        echo -e "   Detektálás: ${C_CYAN}${det_count}×${C_OFF}"
+    else
+        echo -e "   Videó : ${C_CYAN}$(basename "$video")${C_OFF}"
+        echo -e "   Loops : ${C_CYAN}${loops}×${C_OFF}"
+    fi
+    echo -e "   Feldolg.: ${C_CYAN}${mode_label}${C_OFF}"
     echo ""
 
-    cd "$BOTCODE" && $PY bench_vision.py \
-        --video "$video" \
-        --loops "$loops" \
-        $no_cuda_flag
+    if [ "$random_mode" = true ]; then
+        local n="${#videos[@]}"
+        for (( i=1; i<=det_count; i++ )); do
+            local rand_video="${videos[$((RANDOM % n))]}"
+            echo -e "   ${C_GRAY}[$i/$det_count]${C_OFF} ${C_CYAN}$(basename "$rand_video")${C_OFF}"
+            cd "$BOTCODE" && $PY bench_vision.py \
+                --video "$rand_video" \
+                --loops 1 \
+                $no_cuda_flag
+        done
+    else
+        cd "$BOTCODE" && $PY bench_vision.py \
+            --video "$video" \
+            --loops "$loops" \
+            $no_cuda_flag
+    fi
 
     unset CUDA_VISIBLE_DEVICES
 
