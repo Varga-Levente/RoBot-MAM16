@@ -33,6 +33,7 @@ VISION_HOUGH_PARAM1     = 100    # Canny edge detector felső küszöb
 VISION_HOUGH_PARAM2     = 30     # Kör akkumulátor küszöb (kisebb = több találat)
 VISION_HOUGH_MIN_RADIUS = 100    # Minimális kapu sugár pixelben
 VISION_HOUGH_MAX_RADIUS = 200    # Maximális kapu sugár pixelben
+VISION_HOUGH_MIN_DIST   = 100    # Köröktől elvárt min. távolság px-ben (CUDA HoughCircles)
 
 # Fix ROI fallback — csak akkor használt, ha HoughCircles nem talál kört
 # (x, y, szélesség, magasság) pixelben

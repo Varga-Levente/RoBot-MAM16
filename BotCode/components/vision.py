@@ -37,6 +37,13 @@ import settings
 
 log = logging.getLogger("vision")
 
+# CUDA elérhetőség ellenőrzése induláskor
+_CUDA_OK = cv2.cuda.getCudaEnabledDeviceCount() > 0
+if _CUDA_OK:
+    log.info("CUDA elérhető — GPU-gyorsított vision feldolgozás aktív")
+else:
+    log.info("CUDA nem elérhető — CPU feldolgozás")
+
 
 class _State(Enum):
     WAIT_FOR_F = auto()
@@ -52,10 +59,26 @@ class VisionProcessor:
         self._cooldown_until: float = 0.0
         self._stable_count:  int = 0
         self._candidate:     Optional[int] = None
-        # Utolsó detektált kör pozíció (annotációhoz)
         self._last_circle:   Optional[Tuple[int, int, int]] = None
-        # Annotált frame cache (debug streamhez)
         self._last_annotated: Optional[np.ndarray] = None
+
+        # CUDA objektumok (egyszer inicializálva, nem minden frame-ben)
+        self._cuda_ok = _CUDA_OK
+        if self._cuda_ok:
+            try:
+                self._median_filter = cv2.cuda.createMedianFilter(cv2.CV_8UC1, 5)
+                self._hough_detector = cv2.cuda.createHoughCirclesDetector(
+                    dp=1,
+                    minDist=settings.VISION_HOUGH_MIN_DIST,
+                    cannyThreshold=settings.VISION_HOUGH_PARAM1,
+                    votesThreshold=settings.VISION_HOUGH_PARAM2,
+                    minRadius=settings.VISION_HOUGH_MIN_RADIUS,
+                    maxRadius=settings.VISION_HOUGH_MAX_RADIUS,
+                )
+                log.info("CUDA vision objektumok inicializálva")
+            except Exception as e:
+                log.warning(f"CUDA inicializálás sikertelen, CPU módra visszaesés: {e}")
+                self._cuda_ok = False
 
     async def processing_loop(
         self,
@@ -100,7 +123,6 @@ class VisionProcessor:
         if digit is None:
             return None
 
-        # 2-frame debounce (referencia kódból)
         if digit == self._candidate:
             self._stable_count += 1
         else:
@@ -136,30 +158,85 @@ class VisionProcessor:
 
         return None
 
-    # ── Digit kinyerése egy frame-ből ────────────────────────────────────────
+    # ── Digit kinyerése ───────────────────────────────────────────────────────
 
     def _extract_digit(self, frame: np.ndarray) -> Optional[int]:
-        """Megkeresi a kapu kört, maszkolja, és visszaadja a 4-bit kódot."""
+        if self._cuda_ok:
+            return self._extract_digit_cuda(frame)
+        return self._extract_digit_cpu(frame)
+
+    def _extract_digit_cuda(self, frame: np.ndarray) -> Optional[int]:
+        """GPU-gyorsított feldolgozás."""
+        try:
+            gpu_frame = cv2.cuda_GpuMat()
+            gpu_frame.upload(frame)
+
+            # BGR → Szürke + medián blur GPU-n
+            gpu_gray = cv2.cuda.cvtColor(gpu_frame, cv2.COLOR_BGR2GRAY)
+            gpu_blurred = cv2.cuda_GpuMat()
+            self._median_filter.apply(gpu_gray, gpu_blurred)
+
+            cx, cy, mask_cpu = self._find_circle_mask_cuda(frame, gpu_blurred)
+
+            # Maszkolás GPU-n
+            gpu_mask = cv2.cuda_GpuMat()
+            gpu_mask.upload(mask_cpu)
+            gpu_masked = cv2.cuda.bitwise_and(gpu_frame, gpu_frame, mask=gpu_mask)
+            gpu_masked_gray = cv2.cuda.cvtColor(gpu_masked, cv2.COLOR_BGR2GRAY)
+            _, gpu_binary = cv2.cuda.threshold(
+                gpu_masked_gray, settings.VISION_LED_THRESHOLD, 255, cv2.THRESH_BINARY
+            )
+
+            # Kontúrkeresés CPU-n (nincs CUDA megfelelő)
+            binary = gpu_binary.download()
+            return self._read_squares(binary, cx, cy)
+
+        except Exception as e:
+            log.warning(f"CUDA hiba, CPU-ra visszaesés: {e}")
+            self._cuda_ok = False
+            return self._extract_digit_cpu(frame)
+
+    def _extract_digit_cpu(self, frame: np.ndarray) -> Optional[int]:
+        """CPU alapú feldolgozás (fallback)."""
         gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
         blurred = cv2.medianBlur(gray, 5)
-
-        cx, cy, mask = self._find_circle_mask(frame, blurred)
-
-        # Körön belüli kép kinyerése
+        cx, cy, mask = self._find_circle_mask_cpu(frame, blurred)
         masked = cv2.bitwise_and(frame, frame, mask=mask)
         masked_gray = cv2.cvtColor(masked, cv2.COLOR_BGR2GRAY)
         _, binary = cv2.threshold(masked_gray, settings.VISION_LED_THRESHOLD,
                                   255, cv2.THRESH_BINARY)
-
         return self._read_squares(binary, cx, cy)
 
-    def _find_circle_mask(
-        self, frame: np.ndarray, blurred: np.ndarray
+    # ── Körkeresés ────────────────────────────────────────────────────────────
+
+    def _find_circle_mask_cuda(
+        self, frame: np.ndarray, gpu_blurred: cv2.cuda_GpuMat
     ) -> Tuple[int, int, np.ndarray]:
-        """HoughCircles alapú körkeresés. Visszaad (cx, cy, mask) tuple-t."""
         h, w = frame.shape[:2]
         mask = np.zeros((h, w), dtype=np.uint8)
-        cx, cy = w // 2, h // 2  # alapértelmezett: képközép
+        cx, cy = w // 2, h // 2
+
+        if settings.VISION_USE_HOUGH:
+            try:
+                gpu_circles = self._hough_detector.detect(gpu_blurred)
+                circles = gpu_circles.download()
+                if circles is not None and circles.shape[1] > 0:
+                    c = circles[0, 0]
+                    cx, cy, r = int(c[0]), int(c[1]), int(c[2])
+                    self._last_circle = (cx, cy, r)
+                    cv2.circle(mask, (cx, cy), r, 255, -1)
+                    return cx, cy, mask
+            except Exception:
+                pass
+
+        return self._roi_fallback(frame, mask)
+
+    def _find_circle_mask_cpu(
+        self, frame: np.ndarray, blurred: np.ndarray
+    ) -> Tuple[int, int, np.ndarray]:
+        h, w = frame.shape[:2]
+        mask = np.zeros((h, w), dtype=np.uint8)
+        cx, cy = w // 2, h // 2
 
         if settings.VISION_USE_HOUGH:
             circles = cv2.HoughCircles(
@@ -177,21 +254,25 @@ class VisionProcessor:
                 cv2.circle(mask, (int(cx), int(cy)), int(r), 255, -1)
                 return int(cx), int(cy), mask
 
-        # Fallback: fix ROI téglalap mint maszk
+        return self._roi_fallback(frame, mask)
+
+    def _roi_fallback(
+        self, frame: np.ndarray, mask: np.ndarray
+    ) -> Tuple[int, int, np.ndarray]:
+        h, w = frame.shape[:2]
         rx = settings.VISION_ROI_X
         ry = settings.VISION_ROI_Y
         rw = min(settings.VISION_ROI_W, w - rx)
         rh = min(settings.VISION_ROI_H, h - ry)
         mask[ry:ry + rh, rx:rx + rw] = 255
-        cx = rx + rw // 2
-        cy = ry + rh // 2
         self._last_circle = None
-        return cx, cy, mask
+        return rx + rw // 2, ry + rh // 2, mask
+
+    # ── Négyzet olvasás (CPU) ─────────────────────────────────────────────────
 
     def _read_squares(
         self, binary: np.ndarray, cx: int, cy: int
     ) -> Optional[int]:
-        """Négyzetes kontúrokat keres, bit értéket számít a kör középponthoz képest."""
         contours, _ = cv2.findContours(binary, cv2.RETR_EXTERNAL,
                                        cv2.CHAIN_APPROX_SIMPLE)
         code = 0
@@ -199,43 +280,33 @@ class VisionProcessor:
             area = cv2.contourArea(c)
             if area < settings.VISION_MIN_SQUARE_AREA:
                 continue
-
             epsilon = 0.02 * cv2.arcLength(c, True)
             approx  = cv2.approxPolyDP(c, epsilon, True)
             if len(approx) != 4:
                 continue
-
             x, y, bw, bh = cv2.boundingRect(approx)
-            ar = bw / float(bh)
-            if not (0.95 <= ar <= 1.05):
+            if not (0.95 <= bw / float(bh) <= 1.05):
                 continue
-
-            # Négyzet középpontja a kör középpontjához képest
             sqx = x + bw // 2
             sqy = y + bh // 2
-
             if sqy < cy:
-                code += 1 if sqx < cx else 2   # TL=1, TR=2
+                code += 1 if sqx < cx else 2
             else:
-                code += 4 if sqx < cx else 8   # BL=4, BR=8
-
+                code += 4 if sqx < cx else 8
         return code if code > 0 else None
 
     def get_debug_frame(self) -> Optional[np.ndarray]:
-        """Visszaadja a legutóbb cacheit annotált frame-et (debug streamhez)."""
         return self._last_annotated
 
     # ── Annotált frame ────────────────────────────────────────────────────────
 
     def annotate(self, frame: np.ndarray, digit: Optional[int]) -> np.ndarray:
-        """Visszaad egy annotált másolatot (kör, négyzetek, bit értékek)."""
         out  = frame.copy()
         gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
         blurred = cv2.medianBlur(gray, 5)
 
-        cx, cy, mask = self._find_circle_mask(frame, blurred)
+        cx, cy, mask = self._find_circle_mask_cpu(frame, blurred)
 
-        # Kör rajzolása
         if self._last_circle:
             lcx, lcy, lr = self._last_circle
             cv2.circle(out, (lcx, lcy), lr, (0, 200, 255), 2)
@@ -247,7 +318,6 @@ class VisionProcessor:
             rh = min(settings.VISION_ROI_H, frame.shape[0] - ry)
             cv2.rectangle(out, (rx, ry), (rx + rw, ry + rh), (0, 200, 255), 2)
 
-        # Négyzet kontúrok + bit értékek
         masked      = cv2.bitwise_and(frame, frame, mask=mask)
         masked_gray = cv2.cvtColor(masked, cv2.COLOR_BGR2GRAY)
         _, binary   = cv2.threshold(masked_gray, settings.VISION_LED_THRESHOLD,
@@ -273,13 +343,18 @@ class VisionProcessor:
             cv2.putText(out, bit_lbl, (x, y - 4),
                         cv2.FONT_HERSHEY_SIMPLEX, 0.4, (56, 189, 248), 1)
 
-        # Állapot szöveg
         state_lbl = self._state.name
         cv2.putText(out, state_lbl, (8, 22),
                     cv2.FONT_HERSHEY_SIMPLEX, 0.6, (200, 200, 200), 2)
         if digit is not None:
             cv2.putText(out, f"{digit:X}", (8, 50),
                         cv2.FONT_HERSHEY_SIMPLEX, 1.2, (56, 189, 248), 2)
+
+        # CUDA állapot jelzése
+        cuda_lbl = "GPU" if self._cuda_ok else "CPU"
+        cv2.putText(out, cuda_lbl, (out.shape[1] - 40, 22),
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.5,
+                    (0, 255, 0) if self._cuda_ok else (0, 165, 255), 1)
         return out
 
 
@@ -298,6 +373,7 @@ if __name__ == "__main__":
         sys.exit(1)
 
     processor = VisionProcessor()
+    print(f"CUDA: {'igen' if processor._cuda_ok else 'nem'}")
     print("Feldolgozás... (q = kilépés)")
     while True:
         ret, frame = cap.read()
@@ -314,3 +390,4 @@ if __name__ == "__main__":
                 break
     cap.release()
     cv2.destroyAllWindows()
+
