@@ -9,11 +9,15 @@ Használat:
 """
 
 import argparse
+import logging
 import sys
 import time
 from collections import deque
 
 import cv2
+
+logging.basicConfig(level=logging.DEBUG,
+                    format="%(name)s [%(levelname)s] %(message)s")
 
 # ── Argumentumok ──────────────────────────────────────────────────────────────
 parser = argparse.ArgumentParser(description="Vision sebesség benchmark")
