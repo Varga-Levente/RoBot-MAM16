@@ -178,11 +178,11 @@ class VisionProcessor:
 
             cx, cy, mask_cpu = self._find_circle_mask_cuda(frame, gpu_blurred)
 
-            # Maszkolás GPU-n
+            # Maszkolás GPU-n — gpu_gray single-channel, így a CUDA maszk működik
             gpu_mask = cv2.cuda_GpuMat()
             gpu_mask.upload(mask_cpu)
-            gpu_masked = cv2.cuda.bitwise_and(gpu_frame, gpu_frame, mask=gpu_mask)
-            gpu_masked_gray = cv2.cuda.cvtColor(gpu_masked, cv2.COLOR_BGR2GRAY)
+            gpu_masked_gray = cv2.cuda_GpuMat()
+            cv2.cuda.bitwise_and(gpu_gray, gpu_gray, gpu_masked_gray, mask=gpu_mask)
             _, gpu_binary = cv2.cuda.threshold(
                 gpu_masked_gray, settings.VISION_LED_THRESHOLD, 255, cv2.THRESH_BINARY
             )
@@ -192,8 +192,7 @@ class VisionProcessor:
             return self._read_squares(binary, cx, cy)
 
         except Exception as e:
-            log.warning(f"CUDA hiba, CPU-ra visszaesés: {e}")
-            self._cuda_ok = False
+            log.warning(f"CUDA frame hiba (CPU fallback): {e}")
             return self._extract_digit_cpu(frame)
 
     def _extract_digit_cpu(self, frame: np.ndarray) -> Optional[int]:
