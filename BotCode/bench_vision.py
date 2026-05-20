@@ -16,7 +16,7 @@ from collections import deque
 
 import cv2
 
-logging.basicConfig(level=logging.DEBUG,
+logging.basicConfig(level=logging.WARNING,
                     format="%(name)s [%(levelname)s] %(message)s")
 
 # ── Argumentumok ──────────────────────────────────────────────────────────────
