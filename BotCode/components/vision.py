@@ -62,20 +62,16 @@ class VisionProcessor:
         self._last_circle:   Optional[Tuple[int, int, int]] = None
         self._last_annotated: Optional[np.ndarray] = None
 
-        # CUDA objektumok (egyszer inicializálva, nem minden frame-ben)
+        # CUDA ellenőrzés — Maxwell (SM 5.3) csak cvtColor + threshold-t támogat
+        # megbízhatóan; median filter és bitwise_and+mask GPU-n nem fut ezen a HW-en
         self._cuda_ok = _CUDA_OK
         if self._cuda_ok:
             try:
-                self._median_filter = cv2.cuda.createMedianFilter(cv2.CV_8UC1, 5)
-                self._hough_detector = cv2.cuda.createHoughCirclesDetector(
-                    dp=1,
-                    minDist=settings.VISION_HOUGH_MIN_DIST,
-                    cannyThreshold=settings.VISION_HOUGH_PARAM1,
-                    votesThreshold=settings.VISION_HOUGH_PARAM2,
-                    minRadius=settings.VISION_HOUGH_MIN_RADIUS,
-                    maxRadius=settings.VISION_HOUGH_MAX_RADIUS,
-                )
-                log.info("CUDA vision objektumok inicializálva")
+                # Teszteljük hogy a cvtColor valóban működik-e
+                _test = cv2.cuda_GpuMat()
+                _test.upload(cv2.cuda_GpuMat(1, 1, cv2.CV_8UC3).download() * 0 +
+                             cv2.cuda_GpuMat(1, 1, cv2.CV_8UC3).download())
+                log.info("CUDA vision aktív (cvtColor + threshold GPU-n)")
             except Exception as e:
                 log.warning(f"CUDA inicializálás sikertelen, CPU módra visszaesés: {e}")
                 self._cuda_ok = False
@@ -166,29 +162,28 @@ class VisionProcessor:
         return self._extract_digit_cpu(frame)
 
     def _extract_digit_cuda(self, frame: np.ndarray) -> Optional[int]:
-        """GPU-gyorsított feldolgozás."""
+        """Hibrid GPU/CPU feldolgozás — Maxwell-kompatibilis műveletek GPU-n."""
         try:
+            # BGR → Szürke GPU-n (megbízható Maxwell-on)
             gpu_frame = cv2.cuda_GpuMat()
             gpu_frame.upload(frame)
-
-            # BGR → Szürke + medián blur GPU-n
             gpu_gray = cv2.cuda.cvtColor(gpu_frame, cv2.COLOR_BGR2GRAY)
-            gpu_blurred = cv2.cuda_GpuMat()
-            self._median_filter.apply(gpu_gray, gpu_blurred)
+            gray = gpu_gray.download()
 
-            cx, cy, mask_cpu = self._find_circle_mask_cuda(frame, gpu_blurred)
+            # Medián blur + körkeresés + maszkolás CPU-n
+            # (Maxwell SM 5.3-on ezek GPU-n instabilak bizonyos képméreteknél)
+            blurred = cv2.medianBlur(gray, 5)
+            cx, cy, mask = self._find_circle_mask_cpu(frame, blurred)
+            masked_gray = cv2.bitwise_and(gray, gray, mask=mask)
 
-            # Maszkolás GPU-n — gpu_gray single-channel, így a CUDA maszk működik
-            gpu_mask = cv2.cuda_GpuMat()
-            gpu_mask.upload(mask_cpu)
-            gpu_masked_gray = cv2.cuda_GpuMat()
-            cv2.cuda.bitwise_and(gpu_gray, gpu_gray, gpu_masked_gray, mask=gpu_mask)
+            # Threshold GPU-n (megbízható, egyszerű elem-szintű művelet)
+            gpu_mg = cv2.cuda_GpuMat()
+            gpu_mg.upload(masked_gray)
             _, gpu_binary = cv2.cuda.threshold(
-                gpu_masked_gray, settings.VISION_LED_THRESHOLD, 255, cv2.THRESH_BINARY
+                gpu_mg, settings.VISION_LED_THRESHOLD, 255, cv2.THRESH_BINARY
             )
-
-            # Kontúrkeresés CPU-n (nincs CUDA megfelelő)
             binary = gpu_binary.download()
+
             return self._read_squares(binary, cx, cy)
 
         except Exception as e:
@@ -207,28 +202,6 @@ class VisionProcessor:
         return self._read_squares(binary, cx, cy)
 
     # ── Körkeresés ────────────────────────────────────────────────────────────
-
-    def _find_circle_mask_cuda(
-        self, frame: np.ndarray, gpu_blurred: cv2.cuda_GpuMat
-    ) -> Tuple[int, int, np.ndarray]:
-        h, w = frame.shape[:2]
-        mask = np.zeros((h, w), dtype=np.uint8)
-        cx, cy = w // 2, h // 2
-
-        if settings.VISION_USE_HOUGH:
-            try:
-                gpu_circles = self._hough_detector.detect(gpu_blurred)
-                circles = gpu_circles.download()
-                if circles is not None and circles.shape[1] > 0:
-                    c = circles[0, 0]
-                    cx, cy, r = int(c[0]), int(c[1]), int(c[2])
-                    self._last_circle = (cx, cy, r)
-                    cv2.circle(mask, (cx, cy), r, 255, -1)
-                    return cx, cy, mask
-            except Exception:
-                pass
-
-        return self._roi_fallback(frame, mask)
 
     def _find_circle_mask_cpu(
         self, frame: np.ndarray, blurred: np.ndarray
