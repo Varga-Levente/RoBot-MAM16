@@ -1,6 +1,6 @@
 # MAM16 BotController — Távirányító szoftver
 
-Xbox One USB kontroller → Raspberry Pi 3B+ → RFM95W LoRa → robot.  
+Xbox One USB kontroller → Raspberry Pi 3B+ → E22-900T22D-V2 LoRa → robot.  
 Platform: **Raspberry Pi 3B+** | Nyelv: **Python 3.10+**
 
 ---
@@ -13,7 +13,7 @@ main.py
   ├── ControllerState     ← megosztott állapot (gamepad, LoRa, linear/angular)
   │
   ├── GamepadReader  ──── evdev Xbox One USB → (linear, angular)
-  ├── LoraSender     ──── RFM95W SPI, AES-128 + HMAC, handshake + küldés
+  ├── LoraSender     ──── E22-900T22D-V2 UART, AES-128 + HMAC, handshake + küldés
   └── ControllerWebServer ← aiohttp beállítás UI + config.json perzisztencia
 ```
 
@@ -29,7 +29,7 @@ GamepadReader.read_state()
 LoraSender.send_command()
     │  JSON → AES-128 CTR → HMAC-SHA256
     ▼
-RFM95W LoRa 868 MHz
+E22-900T22D-V2 LoRa 868.125 MHz
     │
     ▼
 Robot (BotCode) → motor_controller
@@ -42,7 +42,7 @@ Robot (BotCode) → motor_controller
 | `main.py` | asyncio főhurok, handshake → vezérlés → reconnect |
 | `settings.py` | Minden konfigurálható paraméter |
 | `controller_input.py` | evdev Xbox gamepad olvasó, deadzone, speed limit |
-| `lora_sender.py` | RFM95W SPI, titkosítás, challenge-response handshake |
+| `lora_sender.py` | E22-900T22D-V2 UART, titkosítás, challenge-response handshake |
 | `web_server.py` | aiohttp beállítás UI, config.json perzisztencia |
 | `web/` | Sötét glassmorphism UI, live joystick canvas |
 
@@ -55,23 +55,21 @@ Robot (BotCode) → motor_controller
 | Alkatrész | Megjegyzés |
 |-----------|-----------|
 | Raspberry Pi 3B+ | Bármilyen RPi 3/4 működik |
-| RFM95W LoRa modul | Azonos mint a roboron (868 MHz) |
+| E22-900T22D-V2 LoRa modul | Azonos mint a roboron (868.125 MHz, ch18) |
 | Xbox One kontroller | Pulse Red vagy bármely USB-s Xbox One típus |
 | USB kábel | Mikro-USB, kontroller csatlakozáshoz |
 
-### GPIO kiosztás — RFM95W SPI bekötés (BCM számozás)
+### GPIO kiosztás — E22-900T22D-V2 UART bekötés (BCM számozás)
 
-| RFM95W pin | RPi GPIO | RPi fizikai pin |
-|-----------|----------|----------------|
-| VIN / 3.3V | 3.3V | Pin 1 |
-| GND | GND | Pin 6 |
-| SCK | GPIO 11 (SCLK) | Pin 23 |
-| MOSI | GPIO 10 (MOSI) | Pin 19 |
-| MISO | GPIO 9 (MISO) | Pin 21 |
-| CS / NSS | GPIO 8 (CE0) | Pin 24 |
-| RST | GPIO 17 | Pin 11 |
-
-> **Fontos:** Az SPI-t engedélyezni kell a Pi-n (`raspi-config` → Interface Options → SPI).
+| E22 pin | RPi GPIO | RPi fizikai pin | Funkció           |
+|---------|----------|-----------------|-------------------|
+| TX      | RX (GPIO 15) | 10          | UART fogadás      |
+| RX      | TX (GPIO 14) | 8           | UART küldés       |
+| M0      | GPIO 20  | 38              | Mód vezérlés      |
+| M1      | GPIO 21  | 40              | Mód vezérlés      |
+| AUX     | GPIO 16  | 36              | Kész jelző        |
+| VCC     | 3.3V     | 1               | Tápfeszültség     |
+| GND     | GND      | 6               | Föld              |
 
 ---
 
@@ -89,12 +87,12 @@ source .venv/bin/activate
 # 3. Függőségek telepítése
 pip install -r requirements.txt
 
-# 4. SPI engedélyezése
+# 4. UART engedélyezése
 sudo raspi-config
-# Interface Options → SPI → Enable
+# Interface Options → Serial Port → No (login shell), Yes (serial hardware)
 
 # 5. GPIO jogosultság
-sudo usermod -aG gpio,spi,input $USER
+sudo usermod -aG gpio,dialout,input $USER
 # Majd kijelentkezés / újraindítás
 
 # 6. Xbox kontroller tesztelése
@@ -108,7 +106,7 @@ python3 -c "import evdev; [print(d, evdev.InputDevice(d).name) for d in evdev.li
 
 - **evdev:** Csak Linux-on működik. A `input` csoport tagságára szükség van (`/dev/input/event*` olvasáshoz).
 - **adafruit-blinka:** A `BLINKA_MCP2221` környezeti változó beállítása **nem** szükséges RPi-n — natív GPIO használ.
-- **SPI sebesség:** Az RFM95W alapértelmezetten 5 MHz-en kommunikál, RPi SPI elbírja.
+- **pyserial:** Az E22-900T22D-V2 UART kommunikációhoz szükséges (`pip install pyserial`).
 
 ---
 
@@ -119,15 +117,19 @@ A `settings.py` két szekciót tartalmaz.
 ### LoRa szekció — azonos kell legyen a robot `BotCode/settings.py`-val!
 
 ```python
-LORA_FREQUENCY_MHZ    = 868.0
-LORA_SPREADING_FACTOR = 7
-LORA_TX_POWER_DBM     = 17
-LORA_DEVICE_ID        = b"\xDE\xAD\xBE\xEF"   # ← egyezzen a robottal
-LORA_AES_KEY          = b"change_me_16byte"     # ← cseréld le!
-LORA_HMAC_KEY         = b"change_me_hmac_key_32bytes!!"  # ← cseréld le!
+# LoRa pin kiosztás (settings.py-ban állítható, webes UI-ból is)
+LORA_UART_PORT = "/dev/ttyAMA0"  # ← RPi UART port
+LORA_M0_PIN    = 20              # ← BCM GPIO
+LORA_M1_PIN    = 21              # ← BCM GPIO
+LORA_AUX_PIN   = 16             # ← BCM GPIO
+LORA_CHANNEL   = 18             # csatorna 18 = 868.125 MHz
+LORA_TX_POWER  = 22             # dBm, max 22
+LORA_DEVICE_ID = b"\xDE\xAD\xBE\xEF"   # ← egyezzen a robottal
+LORA_AES_KEY   = b"change_me_16byte"     # ← cseréld le!
+LORA_HMAC_KEY  = b"change_me_hmac_key_32bytes!!"  # ← cseréld le!
 ```
 
-> **Verseny előtt:** A `LORA_AES_KEY` és `LORA_HMAC_KEY` értékeket cseréld le egyedi kulcsokra, és győződj meg róla, hogy a robot oldalon (`BotCode/settings.py`) ugyanazok az értékek szerepelnek.
+> **Verseny előtt:** A `LORA_AES_KEY` és `LORA_HMAC_KEY` értékeket cseréld le egyedi kulcsokra, és győződj meg róla, hogy a robot oldalon (`BotCode/settings.py`) ugyanazok az értékek szerepelnek. A `LORA_CHANNEL` értéknek szintén egyeznie kell mindkét oldalon.
 
 ### Controller szekció
 
@@ -185,7 +187,7 @@ http://<raspberry-pi-ip>:8081
 
 - **Valós idejű állapot:** joystick pozíció canvas-on, LT/RT trigger bar-ok, LoRa és gamepad kapcsolat státusz
 - **Vezérlés beállítások:** sebesség limit slider (0–100%), holtzona slider, küldési sebesség (10/20/50 Hz), gamepad eszköz
-- **LoRa beállítások:** frekvencia, Spreading Factor, TX teljesítmény — mentés után automatikusan újrainicializálja a LoRa modult
+- **LoRa beállítások:** UART port, M0/M1/AUX pin (BCM), csatorna, TX teljesítmény — mentés után automatikusan újrainicializálja a LoRa modult
 - **Perzisztencia:** minden mentés azonnal érvényes futás közben, és `config.json`-ba íródik (megmarad újraindítás után)
 
 ---
@@ -253,25 +255,25 @@ sudo usermod -aG input $USER && newgrp input
 python main.py --device /dev/input/event2
 ```
 
-### SPI / LoRa nem elérhető
+### UART / LoRa nem elérhető
+
 ```bash
-# SPI ellenőrzése
-ls /dev/spidev*   # /dev/spidev0.0 kell látszódjon
+# UART ellenőrzése
+ls -la /dev/ttyAMA0
+python3 -c "import serial; s=serial.Serial('/dev/ttyAMA0',9600); print('OK')"
 
-# Ha nem látszik, engedélyezd:
-sudo raspi-config   # Interface Options → SPI → Enable
-sudo reboot
+# UART engedélyezése (ha nem fut)
+sudo raspi-config   # Interface Options → Serial Port → No / Yes
 
-# SPI csoport jogosultság
-groups $USER   # kell szerepeljen: spi
-sudo usermod -aG spi $USER && newgrp spi
+# Felhasználói jogosultság
+sudo usermod -a -G dialout $USER
 ```
 
 ### LoRa handshake timeout
 - Ellenőrizd, hogy a robot fut-e (`python main.py` a BotCode mappában)
-- Ellenőrizd, hogy a `LORA_FREQUENCY_MHZ`, `LORA_SPREADING_FACTOR`, és titkosítási kulcsok **pontosan** egyeznek-e mindkét oldalon
-- Ellenőrizd a fizikai bekötést (különösen a CS és RST pineket)
-- Próbáld közelebb vinni a két eszközt (ha nagy a távolság, csökkentsd a SF értéket: SF7 = leggyorsabb, legrövidebb hatótáv)
+- Ellenőrizd, hogy a `LORA_CHANNEL` és a titkosítási kulcsok **pontosan** egyeznek-e mindkét oldalon
+- Ellenőrizd a fizikai bekötést (különösen az M0, M1 és AUX pineket)
+- Próbáld közelebb vinni a két eszközt
 
 ### Web UI nem érhető el
 ```bash

@@ -1,20 +1,22 @@
 """
-LoRa kommunikációs modul (RFM95W, 868 MHz).
+LoRa kommunikációs modul — EBYTE E22-900T22D-V2 UART alapú.
 
-Titkosítási séma:
-  - AES-128 CTR mód (pycryptodome)
-  - HMAC-SHA256 üzenet hitelesítés
-  - Csomag formátum: [device_id: 4B][nonce: 8B][ciphertext][HMAC: 32B]
-  - Ismeretlen device_id vagy hibás HMAC → csomag eldobás
+Keret formátum (alkalmazás réteg, packet határokon átnyúló adatokhoz):
+  [0xAA][0x55][len_hi][len_lo][payload]
 
-Handshake:
-  - Robot induláskor 32 bájtos véletlenszerű nonce-t broadcast-ol.
-  - A távirányítónak HMAC-SHA256(nonce, LORA_HMAC_KEY) értékkel kell válaszolnia.
-  - Helyes válasz után a robothoz tartozó távirányítóként hitelesítődik.
+Titkosítás (változatlan):
+  AES-128 CTR mód + HMAC-SHA256 hitelesítés
+  Csomag: [device_id:4B][nonce:8B][ciphertext][HMAC:32B]
 
-Parancs formátum (decryptált payload):
-  JSON: {"cmd": "move", "linear": 0.5, "angular": -0.2}
-  vagy: {"cmd": "stop"}
+Handshake (változatlan):
+  Robot → 32 bájt nonce → Controller
+  Controller → HMAC-SHA256(nonce, hmac_key) → Robot
+  Robot → encrypted {"status":"ok"} → Controller
+
+GPIO (Jetson.GPIO, BCM számozás):
+  LORA_M0_PIN  = kimenet, LOW normál módhoz
+  LORA_M1_PIN  = kimenet, LOW normál módhoz
+  LORA_AUX_PIN = bemenet, HIGH = modul szabad
 """
 
 import asyncio
@@ -28,122 +30,193 @@ import settings
 
 log = logging.getLogger("lora")
 
+_MAGIC = b'\xAA\x55'
 
-def _encrypt(plaintext: bytes, aes_key: bytes, hmac_key: bytes, device_id: bytes) -> bytes:
+try:
+    import serial as _serial_mod
+    _SERIAL_OK = True
+except ImportError:
+    _SERIAL_OK = False
+    log.warning("pyserial nem elérhető")
+
+try:
+    import Jetson.GPIO as GPIO
+    _GPIO_OK = True
+except ImportError:
+    _GPIO_OK = False
+    log.warning("Jetson.GPIO nem elérhető — AUX/M0/M1 szimulálva")
+
+
+# ── Keretezés ─────────────────────────────────────────────────────────────────
+
+def _frame(data: bytes) -> bytes:
+    n = len(data)
+    return _MAGIC + bytes([n >> 8, n & 0xFF]) + data
+
+
+def _unframe(buf: bytearray) -> Optional[bytes]:
+    """Kiolvassa az első teljes csomagot a bufferből, helyben módosítja."""
+    while len(buf) >= 4:
+        idx = buf.find(_MAGIC)
+        if idx < 0:
+            del buf[:-1]
+            return None
+        if idx > 0:
+            del buf[:idx]
+        if len(buf) < 4:
+            return None
+        n = (buf[2] << 8) | buf[3]
+        if len(buf) < 4 + n:
+            return None
+        payload = bytes(buf[4:4 + n])
+        del buf[:4 + n]
+        return payload
+    return None
+
+
+# ── Titkosítás ────────────────────────────────────────────────────────────────
+
+def _encrypt(plaintext: bytes) -> bytes:
     from Crypto.Cipher import AES
     from Crypto.Hash import HMAC, SHA256
-
     nonce = os.urandom(8)
-    cipher = AES.new(aes_key, AES.MODE_CTR, nonce=nonce)
-    ciphertext = cipher.encrypt(plaintext)
-
-    mac_input = device_id + nonce + ciphertext
-    h = HMAC.new(hmac_key, mac_input, SHA256)
-    return device_id + nonce + ciphertext + h.digest()
+    ct    = AES.new(settings.LORA_AES_KEY, AES.MODE_CTR, nonce=nonce).encrypt(plaintext)
+    mac   = HMAC.new(settings.LORA_HMAC_KEY,
+                     settings.LORA_DEVICE_ID + nonce + ct, SHA256).digest()
+    return settings.LORA_DEVICE_ID + nonce + ct + mac
 
 
-def _decrypt(data: bytes, aes_key: bytes, hmac_key: bytes, expected_device_id: bytes) -> Optional[bytes]:
+def _decrypt(data: bytes) -> Optional[bytes]:
     from Crypto.Cipher import AES
     from Crypto.Hash import HMAC, SHA256
-
-    min_len = 4 + 8 + 1 + 32  # device_id + nonce + min 1B ciphertext + hmac
-    if len(data) < min_len:
+    if len(data) < 4 + 8 + 1 + 32:
         return None
-
-    device_id = data[:4]
-    if device_id != expected_device_id:
-        log.debug(f"Ismeretlen device_id: {device_id.hex()} — csomag eldobva")
+    if data[:4] != settings.LORA_DEVICE_ID:
+        log.debug(f"Ismeretlen device_id: {data[:4].hex()} — eldobva")
         return None
-
-    nonce = data[4:12]
-    hmac_recv = data[-32:]
-    ciphertext = data[12:-32]
-
-    mac_input = device_id + nonce + ciphertext
-    h = HMAC.new(hmac_key, mac_input, SHA256)
-    try:
-        h.verify(hmac_recv)
-    except ValueError:
+    nonce    = data[4:12]
+    ct       = data[12:-32]
+    mac_recv = data[-32:]
+    expected = HMAC.new(settings.LORA_HMAC_KEY,
+                        settings.LORA_DEVICE_ID + nonce + ct, SHA256).digest()
+    if expected != mac_recv:
         log.warning("HMAC ellenőrzés sikertelen — csomag eldobva")
         return None
+    return AES.new(settings.LORA_AES_KEY, AES.MODE_CTR, nonce=nonce).decrypt(ct)
 
-    cipher = AES.new(aes_key, AES.MODE_CTR, nonce=nonce)
-    return cipher.decrypt(ciphertext)
 
+# ── LoRaComm osztály ──────────────────────────────────────────────────────────
 
 class LoRaComm:
     def __init__(self):
-        self._rfm9x = None
+        self._ser: Optional[object] = None
+        self._rx_buf        = bytearray()
         self._authenticated = False
         self._challenge: Optional[bytes] = None
 
+    # ── GPIO ──────────────────────────────────────────────────────────────────
+
+    def _gpio_setup(self) -> None:
+        if not _GPIO_OK:
+            return
+        GPIO.setmode(GPIO.BCM)
+        GPIO.setup(settings.LORA_M0_PIN,  GPIO.OUT, initial=GPIO.LOW)
+        GPIO.setup(settings.LORA_M1_PIN,  GPIO.OUT, initial=GPIO.LOW)
+        GPIO.setup(settings.LORA_AUX_PIN, GPIO.IN)
+
+    def _wait_aux(self, timeout: float = 2.0) -> bool:
+        if not _GPIO_OK:
+            time.sleep(0.02)
+            return True
+        deadline = time.monotonic() + timeout
+        while time.monotonic() < deadline:
+            if GPIO.input(settings.LORA_AUX_PIN) == GPIO.HIGH:
+                return True
+            time.sleep(0.002)
+        log.warning("LoRa AUX timeout — modul nem válaszol")
+        return False
+
+    # ── Hardware init ─────────────────────────────────────────────────────────
+
     def _init_hardware(self) -> bool:
         if settings.DRY_RUN:
-            log.info("[DRY-RUN] LoRa szimulálva")
+            log.info("[DRY-RUN] LoRa E22 szimulálva")
             return True
+        if not _SERIAL_OK:
+            log.error("pyserial nem elérhető — LoRa nem indítható")
+            return False
         try:
-            import board
-            import busio
-            import digitalio
-            import adafruit_rfm9x
-
-            spi = busio.SPI(board.SCK, MOSI=board.MOSI, MISO=board.MISO)
-            cs = digitalio.DigitalInOut(board.CE0)
-            reset = digitalio.DigitalInOut(getattr(board, f"D{settings.LORA_RESET_PIN}"))
-
-            self._rfm9x = adafruit_rfm9x.RFM9x(spi, cs, reset, settings.LORA_FREQUENCY_MHZ)
-            self._rfm9x.tx_power         = settings.LORA_TX_POWER_DBM
-            self._rfm9x.spreading_factor = settings.LORA_SPREADING_FACTOR
-            self._rfm9x.signal_bandwidth = settings.LORA_BANDWIDTH_KHZ * 1000
-            self._rfm9x.coding_rate      = settings.LORA_CODING_RATE
-
-            log.info(f"LoRa inicializálva: {settings.LORA_FREQUENCY_MHZ} MHz, SF{settings.LORA_SPREADING_FACTOR}")
+            self._gpio_setup()
+            self._wait_aux()
+            self._ser = _serial_mod.Serial(
+                port=settings.LORA_UART_PORT,
+                baudrate=settings.LORA_UART_BAUD,
+                bytesize=8, parity='N', stopbits=1,
+                timeout=0.1,
+            )
+            self._ser.reset_input_buffer()
+            freq = 850.125 + settings.LORA_CHANNEL
+            log.info(f"LoRa E22 init: {settings.LORA_UART_PORT}  "
+                     f"{settings.LORA_UART_BAUD} baud  "
+                     f"ch{settings.LORA_CHANNEL} ({freq:.3f} MHz)")
             return True
         except Exception as e:
-            log.error(f"LoRa inicializálási hiba: {e}")
+            log.error(f"LoRa init hiba: {e}")
             return False
 
-    async def _send_challenge(self) -> None:
-        """Handshake: nonce küldése a távirányítónak hitelesítéshez."""
-        self._challenge = os.urandom(32)
-        log.info("LoRa handshake nonce elküldve, várakozás hitelesítésre...")
-        await self._send_raw(self._challenge)
+    # ── Küldés / fogadás ──────────────────────────────────────────────────────
 
-    async def _send_raw(self, data: bytes) -> None:
-        if settings.DRY_RUN or self._rfm9x is None:
-            log.debug(f"[DRY-RUN] LoRa küldés: {data.hex()}")
+    def _send_raw(self, data: bytes) -> None:
+        if settings.DRY_RUN or self._ser is None:
+            log.debug(f"[DRY-RUN] LoRa TX: {data.hex()}")
             return
-        await asyncio.get_event_loop().run_in_executor(None, self._rfm9x.send, data)
+        self._wait_aux()
+        self._ser.write(_frame(data))
+        self._ser.flush()
+        self._wait_aux()
 
-    def _receive_raw(self) -> Optional[bytes]:
-        if settings.DRY_RUN or self._rfm9x is None:
+    def _recv_raw(self, timeout: float = 1.0) -> Optional[bytes]:
+        if settings.DRY_RUN or self._ser is None:
             return None
-        packet = self._rfm9x.receive(timeout=settings.LORA_RECEIVE_TIMEOUT)
-        return bytes(packet) if packet is not None else None
+        deadline = time.monotonic() + timeout
+        while time.monotonic() < deadline:
+            if self._ser.in_waiting:
+                self._rx_buf.extend(self._ser.read(self._ser.in_waiting))
+            payload = _unframe(self._rx_buf)
+            if payload is not None:
+                return payload
+            time.sleep(0.01)
+        return None
+
+    # ── Handshake ─────────────────────────────────────────────────────────────
 
     def _verify_challenge_response(self, response: bytes) -> bool:
         from Crypto.Hash import HMAC, SHA256
         if self._challenge is None:
             return False
-        h = HMAC.new(settings.LORA_HMAC_KEY, self._challenge, SHA256)
         try:
-            h.verify(response)
+            HMAC.new(settings.LORA_HMAC_KEY, self._challenge, SHA256).verify(response)
             return True
         except ValueError:
             return False
 
+    # ── Fő fogadó hurok ───────────────────────────────────────────────────────
+
     async def receive_loop(self, command_queue: asyncio.Queue, state) -> None:
-        """Főhurok: fogad, hitelesít, dekryptál, parancsot queue-ba tesz."""
         if not self._init_hardware():
-            log.warning("LoRa hardver nem elérhető — kommunikáció szimulált módban")
+            log.warning("LoRa hardver nem elérhető — szimulált mód")
             while True:
                 await asyncio.sleep(10)
 
-        await self._send_challenge()
-        log.info("LoRa fogadó hurok elindult")
+        self._challenge = os.urandom(32)
+        loop = asyncio.get_event_loop()
+        await loop.run_in_executor(None, self._send_raw, self._challenge)
+        log.info("LoRa handshake nonce elküldve, várakozás hitelesítésre...")
 
         while True:
-            raw = await asyncio.get_event_loop().run_in_executor(None, self._receive_raw)
+            raw = await loop.run_in_executor(
+                None, lambda: self._recv_raw(timeout=0.5)
+            )
 
             if raw is None:
                 await asyncio.sleep(0.01)
@@ -154,37 +227,51 @@ class LoRaComm:
                     self._authenticated = True
                     state.lora_connected = True
                     log.info("LoRa távirányító hitelesítve!")
-                    # Sikeres handshake visszaigazolás
-                    confirm = _encrypt(b'{"status":"ok"}', settings.LORA_AES_KEY,
-                                       settings.LORA_HMAC_KEY, settings.LORA_DEVICE_ID)
-                    await self._send_raw(confirm)
+                    confirm = _encrypt(b'{"status":"ok"}')
+                    await loop.run_in_executor(None, self._send_raw, confirm)
                 else:
                     log.warning("LoRa: érvénytelen handshake válasz")
                 continue
 
-            plaintext = _decrypt(raw, settings.LORA_AES_KEY, settings.LORA_HMAC_KEY, settings.LORA_DEVICE_ID)
+            plaintext = _decrypt(raw)
             if plaintext is None:
                 continue
 
             try:
                 cmd = json.loads(plaintext.decode("utf-8"))
                 await command_queue.put(cmd)
-                log.debug(f"LoRa parancs fogadva: {cmd}")
+                log.debug(f"LoRa parancs: {cmd}")
             except Exception as e:
-                log.warning(f"LoRa parancs parse hiba: {e}")
+                log.warning(f"LoRa parse hiba: {e}")
 
     async def send(self, data: dict) -> None:
-        payload = json.dumps(data).encode("utf-8")
-        encrypted = _encrypt(payload, settings.LORA_AES_KEY, settings.LORA_HMAC_KEY, settings.LORA_DEVICE_ID)
-        await self._send_raw(encrypted)
+        payload   = json.dumps(data).encode("utf-8")
+        encrypted = _encrypt(payload)
+        loop = asyncio.get_event_loop()
+        await loop.run_in_executor(None, self._send_raw, encrypted)
+
+    def cleanup(self) -> None:
+        if self._ser:
+            self._ser.close()
+            self._ser = None
+        if _GPIO_OK:
+            try:
+                GPIO.cleanup([
+                    settings.LORA_M0_PIN,
+                    settings.LORA_M1_PIN,
+                    settings.LORA_AUX_PIN,
+                ])
+            except Exception:
+                pass
 
 
-# ── Önálló teszt ─────────────────────────────────────────────────────────────
+# ── Önálló teszt ──────────────────────────────────────────────────────────────
 if __name__ == "__main__":
     import argparse
 
-    parser = argparse.ArgumentParser(description="LoRa kommunikáció teszt")
-    parser.add_argument("--listen", action="store_true", help="Fogad és kiírja a csomagokat")
+    parser = argparse.ArgumentParser(description="LoRa E22 kommunikáció teszt")
+    parser.add_argument("--listen", action="store_true",
+                        help="Fogad és kiírja a csomagokat")
     args = parser.parse_args()
 
     async def _run():

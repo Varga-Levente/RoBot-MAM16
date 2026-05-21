@@ -5,17 +5,20 @@
 # =============================================================================
 
 # ── LORA ──────────────────────────────────────────────────────────────────────
-# RFM95W konfiguráció — azonos értékek mint a robot BotCode/settings.py-ban!
+# EBYTE E22-900T22D-V2 LoRa modul — azonos értékek mint a robot BotCode/settings.py-ban!
+# Frekvencia: 850.125 + LORA_CHANNEL MHz  (pl. csatorna 18 → 868.125 MHz)
 
-LORA_SPI_BUS          = 0
-LORA_SPI_DEVICE       = 0
-LORA_RESET_PIN        = 17          # BCM GPIO (Raspberry Pi)
-LORA_FREQUENCY_MHZ    = 868.0       # EU ISM sáv
-LORA_SPREADING_FACTOR = 7
-LORA_BANDWIDTH_KHZ    = 125
-LORA_CODING_RATE      = 5           # 4/5
-LORA_TX_POWER_DBM     = 17
-LORA_RECEIVE_TIMEOUT  = 0.5         # fogadási várakozás másodpercben
+LORA_UART_PORT = "/dev/ttyAMA0"  # Raspberry Pi UART port
+LORA_UART_BAUD = 9600            # Alapértelmezett UART baudrate
+
+# GPIO pin kiosztás (BCM számozás) — M0/M1: mód vezérlés, AUX: kész jelző
+LORA_M0_PIN  = 20               # M0=LOW + M1=LOW → normál/transparent mód
+LORA_M1_PIN  = 21               # M0=LOW + M1=HIGH → AT konfigurációs mód
+LORA_AUX_PIN = 16               # HIGH = modul szabad; LOW = foglalt (küld/fogad)
+
+# Modul RF paraméterek
+LORA_CHANNEL  = 18              # Csatorna 0–80; frekvencia = 850.125 + ch (MHz)
+LORA_TX_POWER = 22              # Adási teljesítmény (dBm), max 22
 
 # Titkosítás — FONTOS: éles használat előtt cseréld le, és egyezzen a robot oldalával!
 LORA_DEVICE_ID = b"\xDE\xAD\xBE\xEF"

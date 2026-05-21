@@ -1,125 +1,210 @@
 """
-LoRa küldő modul — RFM95W SPI, AES-128 CTR + HMAC-SHA256.
+LoRa küldő modul — EBYTE E22-900T22D-V2 UART, AES-128 CTR + HMAC-SHA256.
 
 A csomag formátum és a titkosítási séma pontosan megegyezik
 a BotCode/components/lora_comm.py robot oldali implementációval.
+
+Keret formátum (alkalmazás réteg):
+  [0xAA][0x55][len_hi][len_lo][payload]
 
 Handshake protokoll (robot kezdeményez):
   1. Robot küld 32 raw byte nonce-t
   2. Controller válaszol: HMAC-SHA256(nonce, LORA_HMAC_KEY)
   3. Robot visszaküld titkosított {"status":"ok"}-t
+
+GPIO (RPi.GPIO, BCM számozás):
+  LORA_M0_PIN  = kimenet, LOW normál módhoz
+  LORA_M1_PIN  = kimenet, LOW normál módhoz
+  LORA_AUX_PIN = bemenet, HIGH = modul szabad
 """
 
 import json
 import logging
 import os
 import time
+from typing import Optional
 
 import settings
 
 log = logging.getLogger("lora")
 
+_MAGIC = b'\xAA\x55'
+
 try:
-    from Crypto.Cipher  import AES
-    from Crypto.Hash    import HMAC, SHA256
-    from Crypto.Util    import Counter
+    from Crypto.Cipher import AES
+    from Crypto.Hash   import HMAC, SHA256
     _CRYPTO_OK = True
 except ImportError:
     _CRYPTO_OK = False
     log.warning("pycryptodome nem elérhető")
 
 try:
-    import board
-    import busio
-    import digitalio
-    import adafruit_rfm9x
-    _RFM_OK = True
-except Exception:
-    _RFM_OK = False
-    log.warning("adafruit_rfm9x nem elérhető — száraz futás mód")
+    import serial as _serial_mod
+    _SERIAL_OK = True
+except ImportError:
+    _SERIAL_OK = False
+    log.warning("pyserial nem elérhető — LoRa nem elérhető")
 
+try:
+    import RPi.GPIO as GPIO
+    _GPIO_OK = True
+except ImportError:
+    _GPIO_OK = False
+    log.warning("RPi.GPIO nem elérhető — AUX/M0/M1 szimulálva")
+
+
+# ── Keretezés ─────────────────────────────────────────────────────────────────
+
+def _frame(data: bytes) -> bytes:
+    n = len(data)
+    return _MAGIC + bytes([n >> 8, n & 0xFF]) + data
+
+
+def _unframe(buf: bytearray) -> Optional[bytes]:
+    """Kiolvassa az első teljes csomagot a bufferből, helyben módosítja."""
+    while len(buf) >= 4:
+        idx = buf.find(_MAGIC)
+        if idx < 0:
+            del buf[:-1]
+            return None
+        if idx > 0:
+            del buf[:idx]
+        if len(buf) < 4:
+            return None
+        n = (buf[2] << 8) | buf[3]
+        if len(buf) < 4 + n:
+            return None
+        payload = bytes(buf[4:4 + n])
+        del buf[:4 + n]
+        return payload
+    return None
+
+
+# ── LoraSender osztály ────────────────────────────────────────────────────────
 
 class LoraSender:
     def __init__(self):
-        self._rfm     = None
-        self._auth    = False
-
-    # ── Hardware init ────────────────────────────────────────────────────────
+        self._ser: Optional[object] = None
+        self._rx_buf = bytearray()
+        self._auth   = False
 
     @property
     def hw_available(self) -> bool:
-        return _RFM_OK
+        return _SERIAL_OK
+
+    # ── GPIO ──────────────────────────────────────────────────────────────────
+
+    def _gpio_setup(self) -> None:
+        if not _GPIO_OK:
+            return
+        GPIO.setmode(GPIO.BCM)
+        GPIO.setup(settings.LORA_M0_PIN,  GPIO.OUT, initial=GPIO.LOW)
+        GPIO.setup(settings.LORA_M1_PIN,  GPIO.OUT, initial=GPIO.LOW)
+        GPIO.setup(settings.LORA_AUX_PIN, GPIO.IN)
+
+    def _wait_aux(self, timeout: float = 2.0) -> bool:
+        if not _GPIO_OK:
+            time.sleep(0.02)
+            return True
+        deadline = time.monotonic() + timeout
+        while time.monotonic() < deadline:
+            if GPIO.input(settings.LORA_AUX_PIN) == GPIO.HIGH:
+                return True
+            time.sleep(0.002)
+        log.warning("LoRa AUX timeout — modul nem válaszol")
+        return False
+
+    # ── Hardware init ─────────────────────────────────────────────────────────
 
     def open(self) -> bool:
-        if not _RFM_OK:
-            log.warning("LoRa hardver nem elérhető (könyvtár hiányzik vagy SPI nem inicializálható)")
+        if not _SERIAL_OK:
+            log.warning("pyserial nem elérhető — LoRa nem elérhető")
             return False
         try:
-            spi   = busio.SPI(board.SCK, MOSI=board.MOSI, MISO=board.MISO)
-            cs    = digitalio.DigitalInOut(board.CE0)
-            reset = digitalio.DigitalInOut(
-                getattr(board, f"D{settings.LORA_RESET_PIN}")
+            self._gpio_setup()
+            self._wait_aux()
+            self._ser = _serial_mod.Serial(
+                port=settings.LORA_UART_PORT,
+                baudrate=settings.LORA_UART_BAUD,
+                bytesize=8, parity='N', stopbits=1,
+                timeout=0.1,
             )
-            self._rfm = adafruit_rfm9x.RFM9x(
-                spi, cs, reset,
-                frequency=settings.LORA_FREQUENCY_MHZ,
-            )
-            self._rfm.signal_bandwidth       = settings.LORA_BANDWIDTH_KHZ * 1000
-            self._rfm.spreading_factor       = settings.LORA_SPREADING_FACTOR
-            self._rfm.coding_rate            = settings.LORA_CODING_RATE
-            self._rfm.tx_power               = settings.LORA_TX_POWER_DBM
-            self._rfm.receive_timeout        = settings.LORA_RECEIVE_TIMEOUT
-            log.info(f"LoRa init: {settings.LORA_FREQUENCY_MHZ} MHz, SF{settings.LORA_SPREADING_FACTOR}")
+            self._ser.reset_input_buffer()
+            freq = 850.125 + settings.LORA_CHANNEL
+            log.info(f"LoRa E22 init: {settings.LORA_UART_PORT}  "
+                     f"{settings.LORA_UART_BAUD} baud  "
+                     f"ch{settings.LORA_CHANNEL} ({freq:.3f} MHz)")
             return True
         except Exception as e:
             log.error(f"LoRa init hiba: {e}")
-            self._rfm = None
+            self._ser = None
             return False
 
     def reinit(self) -> bool:
         self.close()
         return self.open()
 
-    # ── Titkosítás ───────────────────────────────────────────────────────────
+    # ── Titkosítás ────────────────────────────────────────────────────────────
 
     def _encrypt(self, plaintext: bytes) -> bytes:
         if not _CRYPTO_OK:
             return plaintext
-        nonce      = os.urandom(8)
-        ctr        = Counter.new(64, prefix=nonce, little_endian=True)
-        cipher     = AES.new(settings.LORA_AES_KEY, AES.MODE_CTR, counter=ctr)
-        ciphertext = cipher.encrypt(plaintext)
-        mac_input  = settings.LORA_DEVICE_ID + nonce + ciphertext
-        mac        = HMAC.new(settings.LORA_HMAC_KEY, mac_input, SHA256).digest()
-        return settings.LORA_DEVICE_ID + nonce + ciphertext + mac
+        nonce = os.urandom(8)
+        ct    = AES.new(settings.LORA_AES_KEY, AES.MODE_CTR, nonce=nonce).encrypt(plaintext)
+        mac   = HMAC.new(settings.LORA_HMAC_KEY,
+                         settings.LORA_DEVICE_ID + nonce + ct, SHA256).digest()
+        return settings.LORA_DEVICE_ID + nonce + ct + mac
 
-    def _decrypt(self, packet: bytes) -> bytes | None:
+    def _decrypt(self, data: bytes) -> Optional[bytes]:
         if not _CRYPTO_OK:
-            return packet
-        min_len = 4 + 8 + 1 + 32
-        if len(packet) < min_len:
+            return data
+        if len(data) < 4 + 8 + 1 + 32:
             return None
-        device_id  = packet[:4]
-        if device_id != settings.LORA_DEVICE_ID:
+        if data[:4] != settings.LORA_DEVICE_ID:
             return None
-        nonce      = packet[4:12]
-        ciphertext = packet[12:-32]
-        recv_mac   = packet[-32:]
-        mac_input  = device_id + nonce + ciphertext
-        expected   = HMAC.new(settings.LORA_HMAC_KEY, mac_input, SHA256).digest()
-        if expected != recv_mac:
+        nonce    = data[4:12]
+        ct       = data[12:-32]
+        mac_recv = data[-32:]
+        expected = HMAC.new(settings.LORA_HMAC_KEY,
+                            settings.LORA_DEVICE_ID + nonce + ct, SHA256).digest()
+        if expected != mac_recv:
             log.warning("HMAC ellenőrzés sikertelen")
             return None
-        ctr       = Counter.new(64, prefix=nonce, little_endian=True)
-        cipher    = AES.new(settings.LORA_AES_KEY, AES.MODE_CTR, counter=ctr)
-        return cipher.decrypt(ciphertext)
+        return AES.new(settings.LORA_AES_KEY, AES.MODE_CTR, nonce=nonce).decrypt(ct)
 
-    # ── Handshake ────────────────────────────────────────────────────────────
+    # ── Alacsony szintű küldés / fogadás ──────────────────────────────────────
+
+    def _send_raw(self, data: bytes) -> bool:
+        if not _SERIAL_OK or self._ser is None:
+            return False
+        try:
+            self._wait_aux()
+            self._ser.write(_frame(data))
+            self._ser.flush()
+            self._wait_aux()
+            return True
+        except Exception as e:
+            log.error(f"LoRa küldési hiba: {e}")
+            return False
+
+    def _recv_raw(self, timeout: float = 1.0) -> Optional[bytes]:
+        if not _SERIAL_OK or self._ser is None:
+            return None
+        deadline = time.monotonic() + timeout
+        while time.monotonic() < deadline:
+            if self._ser.in_waiting:
+                self._rx_buf.extend(self._ser.read(self._ser.in_waiting))
+            payload = _unframe(self._rx_buf)
+            if payload is not None:
+                return payload
+            time.sleep(0.01)
+        return None
+
+    # ── Handshake ─────────────────────────────────────────────────────────────
 
     def do_handshake(self, timeout_sec: float = 15.0) -> bool:
-        """Robot oldalról érkező challenge nonce-ra válaszol HMAC-cal."""
         self._auth = False
-        deadline = time.monotonic() + timeout_sec
+        deadline   = time.monotonic() + timeout_sec
         log.info("Handshake várakozás (robot challenge nonce)...")
 
         while time.monotonic() < deadline:
@@ -128,24 +213,21 @@ class LoraSender:
                 continue
 
             log.debug("Challenge nonce megérkezett, HMAC küldése...")
-            if not _CRYPTO_OK:
-                response = nonce  # dry-run
-            else:
-                response = HMAC.new(settings.LORA_HMAC_KEY, nonce, SHA256).digest()
+            response = (
+                HMAC.new(settings.LORA_HMAC_KEY, nonce, SHA256).digest()
+                if _CRYPTO_OK else nonce
+            )
             self._send_raw(response)
 
-            # Várunk encrypted {"status":"ok"} visszaigazolásra
-            conf_raw = self._recv_raw(timeout=3.0)
+            conf_raw  = self._recv_raw(timeout=3.0)
             if conf_raw is None:
                 log.warning("Handshake megerősítés timeout")
                 continue
             plaintext = self._decrypt(conf_raw)
             if plaintext is None:
-                log.warning("Handshake megerősítés visszafejtési hiba")
                 continue
             try:
-                msg = json.loads(plaintext.decode("utf-8"))
-                if msg.get("status") == "ok":
+                if json.loads(plaintext.decode("utf-8")).get("status") == "ok":
                     self._auth = True
                     log.info("Handshake OK — robot hitelesítve")
                     return True
@@ -156,41 +238,30 @@ class LoraSender:
         log.warning(f"Handshake timeout ({timeout_sec}s)")
         return False
 
-    # ── Parancsküldés ────────────────────────────────────────────────────────
+    # ── Parancsküldés ─────────────────────────────────────────────────────────
 
     def send_command(self, linear: float, angular: float) -> bool:
-        payload = json.dumps({"cmd": "move", "linear": round(linear, 4),
-                                             "angular": round(angular, 4)}).encode()
-        return self._send_encrypted(payload)
+        payload = json.dumps({
+            "cmd":     "move",
+            "linear":  round(linear,  4),
+            "angular": round(angular, 4),
+        }).encode()
+        return self._send_raw(self._encrypt(payload))
 
     def send_stop(self) -> bool:
-        return self._send_encrypted(b'{"cmd":"stop"}')
-
-    def _send_encrypted(self, plaintext: bytes) -> bool:
-        packet = self._encrypt(plaintext)
-        return self._send_raw(packet)
-
-    # ── Alacsony szintű küldés/fogadás ───────────────────────────────────────
-
-    def _send_raw(self, data: bytes) -> bool:
-        if not _RFM_OK or self._rfm is None:
-            return False
-        try:
-            self._rfm.send(data)
-            return True
-        except Exception as e:
-            log.error(f"LoRa küldési hiba: {e}")
-            return False
-
-    def _recv_raw(self, timeout: float = 1.0) -> bytes | None:
-        if not _RFM_OK or self._rfm is None:
-            return None
-        try:
-            return self._rfm.receive(timeout=timeout)
-        except Exception as e:
-            log.error(f"LoRa fogadási hiba: {e}")
-            return None
+        return self._send_raw(self._encrypt(b'{"cmd":"stop"}'))
 
     def close(self) -> None:
-        self._rfm  = None
+        if self._ser:
+            self._ser.close()
+            self._ser = None
+        if _GPIO_OK:
+            try:
+                GPIO.cleanup([
+                    settings.LORA_M0_PIN,
+                    settings.LORA_M1_PIN,
+                    settings.LORA_AUX_PIN,
+                ])
+            except Exception:
+                pass
         self._auth = False

@@ -9,7 +9,7 @@
 <body>
 
 <h1>RoBot BotController</h1>
-<p class="subtitle">Raspberry Pi 3B+ · Xbox One USB · RFM95W LoRa</p>
+<p class="subtitle">Raspberry Pi 3B+ · Xbox One USB · E22-900T22D-V2 LoRa</p>
 
 <!-- Status badges -->
 <div class="status-bar">
@@ -110,28 +110,37 @@
 
   <!-- LoRa beállítások -->
   <div class="card">
-    <h2>LoRa (RFM95W)</h2>
+    <h2>LoRa (E22-900T22D-V2)</h2>
 
     <div class="field">
-      <label>Frekvencia (MHz)</label>
-      <input type="number" id="inp-freq" step="0.1" min="863" max="870" value="868.0">
+      <label>UART port</label>
+      <input type="text" id="inp-uart" placeholder="/dev/ttyAMA0">
     </div>
 
     <div class="field">
-      <label>Spreading Factor</label>
-      <select id="inp-sf">
-        <option value="7" selected>SF7 (gyors, rövid hatótáv)</option>
-        <option value="8">SF8</option>
-        <option value="9">SF9</option>
-        <option value="10">SF10</option>
-        <option value="11">SF11</option>
-        <option value="12">SF12 (lassú, hosszú hatótáv)</option>
-      </select>
+      <label>M0 pin (BCM)</label>
+      <input type="number" id="inp-m0" min="0" max="40" value="20">
     </div>
 
     <div class="field">
-      <label>TX teljesítmény <span class="value-hint" id="hint-txpwr">17 dBm</span></label>
-      <input type="range" id="inp-txpwr" min="2" max="20" step="1" value="17"
+      <label>M1 pin (BCM)</label>
+      <input type="number" id="inp-m1" min="0" max="40" value="21">
+    </div>
+
+    <div class="field">
+      <label>AUX pin (BCM)</label>
+      <input type="number" id="inp-aux" min="0" max="40" value="16">
+    </div>
+
+    <div class="field">
+      <label>Csatorna (0–80) <span class="value-hint" id="hint-ch">868.125 MHz</span></label>
+      <input type="number" id="inp-ch" min="0" max="80" value="18"
+             oninput="document.getElementById('hint-ch').textContent=(850.125+parseInt(this.value||0)).toFixed(3)+' MHz'">
+    </div>
+
+    <div class="field">
+      <label>TX teljesítmény <span class="value-hint" id="hint-txpwr">22 dBm</span></label>
+      <input type="range" id="inp-txpwr" min="0" max="22" step="1" value="22"
              oninput="document.getElementById('hint-txpwr').textContent=this.value+' dBm'">
     </div>
 

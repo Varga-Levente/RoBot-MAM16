@@ -91,13 +91,22 @@ async function loadSettings() {
       document.getElementById('inp-hz').value = cfg.CTRL_SEND_HZ;
     if (cfg.CTRL_GAMEPAD_DEVICE !== undefined)
       document.getElementById('inp-device').value = cfg.CTRL_GAMEPAD_DEVICE;
-    if (cfg.LORA_FREQUENCY_MHZ !== undefined)
-      document.getElementById('inp-freq').value = cfg.LORA_FREQUENCY_MHZ;
-    if (cfg.LORA_SPREADING_FACTOR !== undefined)
-      document.getElementById('inp-sf').value = cfg.LORA_SPREADING_FACTOR;
-    if (cfg.LORA_TX_POWER_DBM !== undefined) {
-      document.getElementById('inp-txpwr').value = cfg.LORA_TX_POWER_DBM;
-      document.getElementById('hint-txpwr').textContent = cfg.LORA_TX_POWER_DBM + ' dBm';
+    if (cfg.LORA_UART_PORT !== undefined)
+      document.getElementById('inp-uart').value = cfg.LORA_UART_PORT;
+    if (cfg.LORA_M0_PIN !== undefined)
+      document.getElementById('inp-m0').value = cfg.LORA_M0_PIN;
+    if (cfg.LORA_M1_PIN !== undefined)
+      document.getElementById('inp-m1').value = cfg.LORA_M1_PIN;
+    if (cfg.LORA_AUX_PIN !== undefined)
+      document.getElementById('inp-aux').value = cfg.LORA_AUX_PIN;
+    if (cfg.LORA_CHANNEL !== undefined) {
+      document.getElementById('inp-ch').value = cfg.LORA_CHANNEL;
+      document.getElementById('hint-ch').textContent =
+        (850.125 + cfg.LORA_CHANNEL).toFixed(3) + ' MHz';
+    }
+    if (cfg.LORA_TX_POWER !== undefined) {
+      document.getElementById('inp-txpwr').value = cfg.LORA_TX_POWER;
+      document.getElementById('hint-txpwr').textContent = cfg.LORA_TX_POWER + ' dBm';
     }
   } catch (_) {}
 }
@@ -120,9 +129,12 @@ async function saveSection(section) {
     };
   } else if (section === 'lora') {
     payload = {
-      LORA_FREQUENCY_MHZ:   parseFloat(document.getElementById('inp-freq').value),
-      LORA_SPREADING_FACTOR: parseInt(document.getElementById('inp-sf').value),
-      LORA_TX_POWER_DBM:    parseInt(document.getElementById('inp-txpwr').value),
+      LORA_UART_PORT: document.getElementById('inp-uart').value.trim(),
+      LORA_M0_PIN:    parseInt(document.getElementById('inp-m0').value),
+      LORA_M1_PIN:    parseInt(document.getElementById('inp-m1').value),
+      LORA_AUX_PIN:   parseInt(document.getElementById('inp-aux').value),
+      LORA_CHANNEL:   parseInt(document.getElementById('inp-ch').value),
+      LORA_TX_POWER:  parseInt(document.getElementById('inp-txpwr').value),
     };
   }
 

@@ -22,10 +22,8 @@ Pillow>=10.0.0
 # Ha manuálisan kell:
 # Jetson.GPIO>=2.1.6
 
-# ── SPI / I2C (LoRa + OLED) ───────────────────────────────────────────────
-spidev>=3.6
-adafruit-blinka>=8.0.0
-adafruit-circuitpython-rfm9x>=2.4.0
+# ── I2C (OLED) ────────────────────────────────────────────────────────────
+# Megjegyzés: luma.oled I2C-t használ, spidev/adafruit már nem szükséges.
 
-# ── Soros port (IR LED vezérlés) ───────────────────────────────────────────
+# ── Soros port (IR LED vezérlés + LoRa E22 UART) ──────────────────────────
 pyserial>=3.5

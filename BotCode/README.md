@@ -25,7 +25,7 @@ Minden komponens egy önálló asyncio task, queue-kon kommunikálnak egymással
 | `components/camera.py` | IMX219 CSI kamera / tesztvideó olvasás |
 | `components/vision.py` | OpenCV kapu LED kód felismerés |
 | `components/ir_transmitter.py` | 38kHz modulált IR jel küldés UART-on |
-| `components/lora_comm.py` | RFM95W LoRa, AES-128 titkosítással |
+| `components/lora_comm.py` | E22-900T22D-V2 LoRa (UART), AES-128 titkosítással |
 | `components/oled_display.py` | 0.91" SSD1306 OLED kijelző |
 | `components/motor_controller.py` | DRV8833 + 4× N20 motor |
 | `components/stream_server.py` | aiortc WebRTC stream + aiohttp web UI |
@@ -48,14 +48,16 @@ Minden komponens egy önálló asyncio task, queue-kon kommunikálnak egymással
 | Motor RL IN2 | 20 |
 | Motor RR IN1 | 21 |
 | Motor RR IN2 | 16 |
-| LoRa RESET | 17 |
+| LoRa M0 | 20 |
+| LoRa M1 | 21 |
+| LoRa AUX | 16 |
 
-### I2C / SPI
+### I2C / SPI / UART
 
 | Eszköz | Protokoll | Bus | Cím / CS |
 |--------|-----------|-----|---------|
 | SSD1306 OLED | I2C | Bus 1 | 0x3C |
-| RFM95W LoRa | SPI | SPI0 | CE0 |
+| E22-900T22D-V2 LoRa | UART | /dev/ttyTHS2 | — |
 
 ### Soros port
 
@@ -107,7 +109,12 @@ A `settings.py` fájl szekciókra bontva tartalmaz minden paramétert.
 ROBOT_NAME = "MAM16"
 ROBOT_ROLE = "PACMAN"   # vagy "GHOST"
 
-# LoRa titkosítás — CSERÉLD LE!
+LORA_UART_PORT = "/dev/ttyTHS2"  # Jetson Nano UART port
+LORA_M0_PIN    = 20              # BCM GPIO
+LORA_M1_PIN    = 21              # BCM GPIO
+LORA_AUX_PIN   = 16             # BCM GPIO
+LORA_CHANNEL   = 18             # csatorna (868.125 MHz)
+LORA_TX_POWER  = 22             # dBm
 LORA_DEVICE_ID = b"\xDE\xAD\xBE\xEF"
 LORA_AES_KEY   = b"change_me_16byte"
 LORA_HMAC_KEY  = b"change_me_hmac_key_32bytes!!"
@@ -287,9 +294,11 @@ gst-launch-1.0 nvarguscamerasrc ! nvvidconv ! xvimagesink
 
 ### LoRa nem kommunikál
 ```bash
-# SPI ellenőrzése
-ls /dev/spidev*   # /dev/spidev0.0 kell látszódjon
-# LoRa reset pin: settings.py → LORA_RESET_PIN
+# UART ellenőrzése
+ls -la /dev/ttyTHS2
+python3.8 -c "import serial; s=serial.Serial('/dev/ttyTHS2',9600); print('OK')"
+# GPIO jogosultság
+sudo usermod -a -G gpio $USER
 ```
 
 ### WebRTC stream nem jelenik meg a böngészőben

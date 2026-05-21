@@ -87,17 +87,20 @@ IR_BYTES_PER_BIT   = 4               # Hány carrier/silence byte fedi le egy 12
 IR_PWM_PIN         = 32              # Jetson Nano hardware PWM pin (BCM); -1 = külső 555 IC
 
 # ── LORA ──────────────────────────────────────────────────────────────────────
-# RFM95W LoRa modul konfiguráció (SPI) és titkosítás
+# EBYTE E22-900T22D-V2 LoRa modul (UART interfész)
+# Frekvencia: 850.125 + LORA_CHANNEL MHz  (pl. csatorna 18 → 868.125 MHz)
 
-LORA_SPI_BUS          = 0           # SPI busz azonosító
-LORA_SPI_DEVICE       = 0           # SPI chip select azonosító (CE0)
-LORA_RESET_PIN        = 17          # GPIO reset pin (BCM számozás)
-LORA_FREQUENCY_MHZ    = 868.0       # Frekvencia (MHz) — EU ISM sáv
-LORA_SPREADING_FACTOR = 7           # SF7–SF12; kisebb = gyorsabb, nagyobb = nagyobb hatótáv
-LORA_BANDWIDTH_KHZ    = 125         # Sávszélesség kHz-ben (125 / 250 / 500)
-LORA_CODING_RATE      = 5           # Kódolási arány: 5=4/5, 6=4/6, 7=4/7, 8=4/8
-LORA_TX_POWER_DBM     = 17          # Adási teljesítmény (dBm), max 20
-LORA_RECEIVE_TIMEOUT  = 0.1         # Fogadási várakozás másodpercenként (nem blokkoló poll)
+LORA_UART_PORT = "/dev/ttyTHS2"  # Jetson Nano UART port
+LORA_UART_BAUD = 9600            # Alapértelmezett UART baudrate
+
+# GPIO pin kiosztás (BCM számozás) — M0/M1: mód vezérlés, AUX: kész jelző
+LORA_M0_PIN  = 20               # M0=LOW + M1=LOW → normál/transparent mód
+LORA_M1_PIN  = 21               # M0=LOW + M1=HIGH → AT konfigurációs mód
+LORA_AUX_PIN = 16               # HIGH = modul szabad; LOW = foglalt (küld/fogad)
+
+# Modul RF paraméterek
+LORA_CHANNEL  = 18              # Csatorna 0–80; frekvencia = 850.125 + ch (MHz)
+LORA_TX_POWER = 22              # Adási teljesítmény (dBm), max 22
 
 # Titkosítás — FONTOS: éles használat előtt cseréld le mindkét kulcsot!
 # Mindkét robot és a távirányító ugyanazt a kulcspárt kell használja.

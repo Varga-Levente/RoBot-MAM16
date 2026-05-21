@@ -4,10 +4,8 @@ evdev>=1.6.0
 # ── Titkosítás (azonos a robot oldalával) ─────────────────────────────────────
 pycryptodome>=3.20.0
 
-# ── LoRa (RFM95W) ─────────────────────────────────────────────────────────────
-adafruit-blinka>=8.0.0
-adafruit-circuitpython-rfm9x>=2.2.0
-spidev>=3.6
+# ── LoRa (E22-900T22D-V2 UART) + GPIO (M0/M1/AUX) ────────────────────────────
+pyserial>=3.5
 RPi.GPIO>=0.7.1
 
 # ── Web UI szerver ────────────────────────────────────────────────────────────

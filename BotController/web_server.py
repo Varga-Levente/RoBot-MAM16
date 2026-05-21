@@ -28,9 +28,12 @@ _EDITABLE = {
     "CTRL_DEADZONE":       (float, 0.0,  0.5),
     "CTRL_SEND_HZ":        (int,   1,    50),
     "CTRL_GAMEPAD_DEVICE": (str,   None, None),
-    "LORA_FREQUENCY_MHZ":  (float, 863.0, 870.0),
-    "LORA_SPREADING_FACTOR":(int,  7,    12),
-    "LORA_TX_POWER_DBM":   (int,   2,    20),
+    "LORA_UART_PORT":      (str,   None, None),
+    "LORA_M0_PIN":         (int,   0,    40),
+    "LORA_M1_PIN":         (int,   0,    40),
+    "LORA_AUX_PIN":        (int,   0,    40),
+    "LORA_CHANNEL":        (int,   0,    80),
+    "LORA_TX_POWER":       (int,   0,    22),
 }
 
 
