@@ -2,19 +2,20 @@
 Xbox One USB gamepad olvasó — Mecanum vezérlés (evdev alapú, Linux).
 
 Tengely kiosztás:
-  ABS_X  (0) — bal stick X   → lateral (-1=bal, +1=jobb Mecanum söpörve)
-  ABS_Y  (1) — bal stick Y   → left_y  (-1=előre, +1=hátra átlós komponens)
+  ABS_X  (0) — bal stick X   → angular  (-1=balra kanyar, +1=jobbra kanyar)
+  ABS_Y  (1) — bal stick Y   → figyelmen kívül hagyva
   ABS_Z  (2) — LT trigger    → hátrament (linear-)
-  ABS_RX (3) — jobb stick X  → angular (kanyarodás)
+  ABS_RX (3) — jobb stick X  → lateral  (-1=Mecanum bal, +1=Mecanum jobb)
   ABS_RZ (5) — RT trigger    → előremenet (linear+)
 
 Gombok:
   BTN_SOUTH (304) — A → hátra ugrás
-  BTN_EAST  (305) — B → jobbra ugrás (Mecanum oldalra)
-  BTN_WEST  (307) — X → balra ugrás  (Mecanum oldalra)
+  BTN_EAST  (305) — B → jobbra Mecanum ugrás
+  BTN_WEST  (307) — X → balra Mecanum ugrás
   BTN_NORTH (308) — Y → előre ugrás
 
 read_state() → (linear, angular, lateral, left_y, jump_dir)
+  left_y mindig 0.0 (bal stick Y nincs használva)
 """
 
 import logging
@@ -45,10 +46,10 @@ _JUMP_MAP = {
 
 
 class GamepadReader:
-    _AXIS_LX = 0   # bal stick X  → lateral
-    _AXIS_LY = 1   # bal stick Y  → left_y
+    _AXIS_LX = 0   # bal stick X  → angular (kanyarodás)
+    _AXIS_LY = 1   # bal stick Y  → figyelmen kívül hagyva
     _AXIS_LT = 2   # LT trigger   → reverse
-    _AXIS_RX = 3   # jobb stick X → angular
+    _AXIS_RX = 3   # jobb stick X → lateral (Mecanum oldalazás)
     _AXIS_RT = 5   # RT trigger   → forward
 
     def __init__(self):
@@ -155,9 +156,9 @@ class GamepadReader:
         """Visszaad (linear, angular, lateral, left_y, jump_dir).
 
         linear:   RT-LT  (-1..1), pozitív=előre
-        angular:  jobb stick X (-1..1), pozitív=jobbra kanyar
-        lateral:  bal stick X (-1..1), pozitív=Mecanum jobbra söpörve
-        left_y:   bal stick Y (-1..1), negatív=előre (átlós komponens)
+        angular:  bal stick X (-1..1), pozitív=jobbra kanyar
+        lateral:  jobb stick X (-1..1), pozitív=Mecanum jobbra söpörve
+        left_y:   mindig 0.0 (bal stick Y figyelmen kívül hagyva)
         jump_dir: None | "forward" | "backward" | "left" | "right"
         Raises OSError ha a kontroller lecsatlakozott.
         """
@@ -169,13 +170,12 @@ class GamepadReader:
         rt = self._norm_axis(self._AXIS_RT, self._state[self._AXIS_RT], signed=False)
         lt = self._norm_axis(self._AXIS_LT, self._state[self._AXIS_LT], signed=False)
         lx = self._norm_axis(self._AXIS_LX, self._state[self._AXIS_LX], signed=True)
-        ly = self._norm_axis(self._AXIS_LY, self._state[self._AXIS_LY], signed=True)
         rx = self._norm_axis(self._AXIS_RX, self._state[self._AXIS_RX], signed=True)
 
         self.raw_rt = rt
         self.raw_lt = lt
         self.raw_lx = lx
-        self.raw_ly = ly
+        self.raw_ly = 0.0
         self.raw_rx = rx
         self.btn_y  = self._btn_state.get(_BTN_Y, False)
         self.btn_a  = self._btn_state.get(_BTN_A, False)
@@ -183,14 +183,13 @@ class GamepadReader:
         self.btn_b  = self._btn_state.get(_BTN_B, False)
 
         linear  = self._deadzone(rt - lt, dz) * limit
-        angular = self._deadzone(rx,       dz) * limit
-        lateral = self._deadzone(lx,       dz) * limit
-        left_y  = self._deadzone(ly,       dz) * limit  # negatív=előre
+        angular = self._deadzone(lx,      dz) * limit  # bal stick X → kanyar
+        lateral = self._deadzone(rx,      dz) * limit  # jobb stick X → Mecanum
 
         jump_dir           = self._pending_jump
         self._pending_jump = None
 
-        return linear, angular, lateral, left_y, jump_dir
+        return linear, angular, lateral, 0.0, jump_dir
 
     # ── Kompatibilitás ────────────────────────────────────────────────────────
 

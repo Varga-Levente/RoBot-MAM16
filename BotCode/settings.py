@@ -129,7 +129,7 @@ MOTOR_MAX_SPEED    = 1.0    # Maximális sebesség (0.0–1.0 normalizált)
 MOTOR_MIN_SPEED    = 0.0    # Minimális sebesség (holt sáv szűrő)
 MOTOR_RAMP_RATE    = 0.05   # Sebesség változás / vezérlési ciklus (gyorsulás korlát)
 MOTOR_COMMAND_HZ   = 50     # Motor vezérlési ciklus frekvencia (Hz)
-MOTOR_JUMP_DURATION = 0.20  # Ugrás impulzus hossza (s)
+MOTOR_JUMP_DURATION = 1.0   # Ugrás impulzus hossza (s) — felülírható a LoRa "duration" mezővel
 MOTOR_JUMP_POWER    = 1.0   # Ugrás ereje (0.0–1.0)
 
 # ── OLED ──────────────────────────────────────────────────────────────────────

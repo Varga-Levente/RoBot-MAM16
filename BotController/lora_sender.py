@@ -251,8 +251,10 @@ class LoraSender:
         }).encode()
         return self._send_raw(self._encrypt(payload))
 
-    def send_jump(self, direction: str) -> bool:
-        payload = json.dumps({"cmd": "jump", "direction": direction}).encode()
+    def send_jump(self, direction: str, duration: float = 1.0) -> bool:
+        payload = json.dumps({
+            "cmd": "jump", "direction": direction, "duration": round(duration, 2)
+        }).encode()
         return self._send_raw(self._encrypt(payload))
 
     def send_stop(self) -> bool:

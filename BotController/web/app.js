@@ -268,6 +268,10 @@ async function loadSettings() {
       document.getElementById('inp-hz').value = cfg.CTRL_SEND_HZ;
     if (cfg.CTRL_GAMEPAD_DEVICE !== undefined)
       document.getElementById('inp-device').value = cfg.CTRL_GAMEPAD_DEVICE;
+    if (cfg.CTRL_JUMP_DURATION !== undefined) {
+      document.getElementById('inp-jump').value = cfg.CTRL_JUMP_DURATION;
+      document.getElementById('hint-jump').textContent = parseFloat(cfg.CTRL_JUMP_DURATION).toFixed(1) + ' s';
+    }
     if (cfg.LORA_UART_PORT !== undefined)
       document.getElementById('inp-uart').value = cfg.LORA_UART_PORT;
     if (cfg.LORA_M0_PIN !== undefined)
@@ -303,6 +307,7 @@ async function saveSection(section) {
       CTRL_DEADZONE:       parseFloat(document.getElementById('inp-dz').value)    / 100,
       CTRL_SEND_HZ:        parseInt(document.getElementById('inp-hz').value),
       CTRL_GAMEPAD_DEVICE: document.getElementById('inp-device').value.trim(),
+      CTRL_JUMP_DURATION:  parseFloat(document.getElementById('inp-jump').value),
     };
   } else if (section === 'lora') {
     payload = {

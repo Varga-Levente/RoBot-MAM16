@@ -178,6 +178,8 @@ class MotorController:
 
             elif action == "jump":
                 direction = cmd.get("direction", "forward")
+                duration  = float(cmd.get("duration", settings.MOTOR_JUMP_DURATION))
+                duration  = max(0.05, min(5.0, duration))
                 _jmap = {
                     "forward":  ( 1.0, 0.0,  0.0),
                     "backward": (-1.0, 0.0,  0.0),
@@ -186,9 +188,9 @@ class MotorController:
                 }
                 lin, ang, lat = _jmap.get(direction, (0.0, 0.0, 0.0))
                 power = settings.MOTOR_JUMP_POWER
-                log.info(f"Ugrás: {direction} (power={power})")
+                log.info(f"Ugrás: {direction} (power={power}, duration={duration}s)")
                 self.set_mecanum(lin * power, ang, lat * power)
-                await asyncio.sleep(settings.MOTOR_JUMP_DURATION)
+                await asyncio.sleep(duration)
                 self.emergency_stop()
 
             elif action == "stop":
