@@ -33,6 +33,8 @@ CTRL_DEADZONE       = 0.05   # normalizált holtzona (0.0–1.0 közötti érté
 CTRL_SEND_HZ        = 20     # parancsküldés frekvenciája (Hz)
 CTRL_GAMEPAD_DEVICE = ""     # "" = automatikus keresés; vagy pl. "/dev/input/event3"
 CTRL_RECONNECT_SEC  = 3.0    # LoRa handshake újrakísérlet időköze (s)
+CTRL_JUMP_DURATION  = 0.20   # ugrás impulzus hossza (s) — hány másodpercig tart a burst
+CTRL_JUMP_POWER     = 1.0    # ugrás ereje (0.0–1.0)
 
 # ── WEB SERVER ────────────────────────────────────────────────────────────────
 # Beállítás UI szerver

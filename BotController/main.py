@@ -27,9 +27,16 @@ class ControllerState:
     lora_authenticated:    bool  = False
     linear:                float = 0.0
     angular:               float = 0.0
+    lateral:               float = 0.0
+    left_y:                float = 0.0
     lt:                    float = 0.0
     rt:                    float = 0.0
     stick_x:               float = 0.0
+    jump_dir:              str   = ""
+    btn_y:                 bool  = False
+    btn_a:                 bool  = False
+    btn_x:                 bool  = False
+    btn_b:                 bool  = False
     lora_reinit_requested: bool  = False
 
 
@@ -108,25 +115,40 @@ async def _control_tick(
     # ── Fő vezérlési ciklus ───────────────────────────────────────────────
     t0 = loop.time()
     try:
-        linear, angular = await loop.run_in_executor(None, gamepad.read_state)
+        linear, angular, lateral, left_y, jump_dir = await loop.run_in_executor(
+            None, gamepad.read_state
+        )
     except OSError:
         log.warning("Kontroller lecsatlakozva")
         gamepad.close()
         state.gamepad_connected = False
         return
 
-    state.linear  = linear
-    state.angular = angular
-    state.lt      = gamepad.raw_lt
-    state.rt      = gamepad.raw_rt
-    state.stick_x = gamepad.raw_steer
+    state.linear   = linear
+    state.angular  = angular
+    state.lateral  = lateral
+    state.left_y   = left_y
+    state.lt       = gamepad.raw_lt
+    state.rt       = gamepad.raw_rt
+    state.stick_x  = gamepad.raw_rx
+    state.jump_dir = jump_dir or ""
+    state.btn_y    = gamepad.btn_y
+    state.btn_a    = gamepad.btn_a
+    state.btn_x    = gamepad.btn_x
+    state.btn_b    = gamepad.btn_b
+
+    moving = (linear != 0.0 or angular != 0.0 or
+              lateral != 0.0 or left_y  != 0.0)
 
     if dry_run:
-        if linear or angular:
-            log.debug(f"[DRY-RUN] linear={linear:.3f} angular={angular:.3f}")
+        if moving or jump_dir:
+            log.debug(f"[DRY-RUN] lin={linear:.3f} ang={angular:.3f} "
+                      f"lat={lateral:.3f} ly={left_y:.3f} jump={jump_dir}")
     elif state.lora_hw_ok and state.lora_authenticated:
-        if linear != 0.0 or angular != 0.0:
-            sender.send_command(linear, angular)
+        if jump_dir:
+            sender.send_jump(jump_dir)
+        elif moving:
+            sender.send_command(linear, angular, lateral, left_y)
         elif int(t0) % max(1, settings.CTRL_SEND_HZ) == 0:
             sender.send_stop()
 

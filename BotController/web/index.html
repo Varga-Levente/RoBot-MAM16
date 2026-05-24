@@ -44,6 +44,8 @@
         <div class="joy-vals">
           <div><span class="jv-lbl">Lin</span><span class="jv-val" id="val-linear">0.000</span></div>
           <div><span class="jv-lbl">Ang</span><span class="jv-val" id="val-angular">0.000</span></div>
+          <div><span class="jv-lbl">Lat</span><span class="jv-val" id="val-lateral">0.000</span></div>
+          <div><span class="jv-lbl">LY</span><span class="jv-val" id="val-lefty">0.000</span></div>
         </div>
       </div>
 
@@ -60,14 +62,32 @@
 
     </div>
 
-    <!-- Bal stick X csúszka -->
+    <!-- Lateral (bal stick X) -->
     <div class="stick-row">
-      <span class="stick-lbl">Bal stick</span>
+      <span class="stick-lbl">Lat</span>
       <div class="stick-track">
         <div class="stick-center-line"></div>
-        <div class="stick-knob" id="stick-knob"></div>
+        <div class="stick-knob" id="stick-lat-knob"></div>
       </div>
-      <span class="stick-val" id="val-stick-x">0.000</span>
+      <span class="stick-val" id="val-stick-lat">0.000</span>
+    </div>
+
+    <!-- Left Y (bal stick Y) -->
+    <div class="stick-row">
+      <span class="stick-lbl">L.Y</span>
+      <div class="stick-track">
+        <div class="stick-center-line"></div>
+        <div class="stick-knob stick-knob-ly" id="stick-ly-knob"></div>
+      </div>
+      <span class="stick-val" id="val-stick-ly">0.000</span>
+    </div>
+
+    <!-- Gombállapotok -->
+    <div class="btn-states">
+      <div class="bs bs-y" id="bs-y">Y</div>
+      <div class="bs bs-a" id="bs-a">A</div>
+      <div class="bs bs-x" id="bs-x">X</div>
+      <div class="bs bs-b" id="bs-b">B</div>
     </div>
   </div>
 
@@ -149,6 +169,13 @@
       <button onclick="loadSettings()">Visszaállítás</button>
     </div>
     <div class="save-status" id="status-lora"></div>
+  </div>
+
+  <!-- Robot mozgás vizualizáció -->
+  <div class="card">
+    <h2>Robot mozgás</h2>
+    <canvas id="robot-canvas" width="300" height="230"></canvas>
+    <div class="jump-indicator" id="jump-indicator">–</div>
   </div>
 
 </div>

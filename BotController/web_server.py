@@ -137,9 +137,16 @@ class ControllerWebServer:
             "lora_authenticated": st.lora_authenticated if st else False,
             "linear":   round(st.linear,  3) if st else 0.0,
             "angular":  round(st.angular, 3) if st else 0.0,
+            "lateral":  round(st.lateral, 3) if st else 0.0,
+            "left_y":   round(st.left_y,  3) if st else 0.0,
             "lt":       round(st.lt,      3) if st else 0.0,
             "rt":       round(st.rt,      3) if st else 0.0,
             "stick_x":  round(st.stick_x, 3) if st else 0.0,
+            "jump_dir": st.jump_dir if st else "",
+            "btn_y":    st.btn_y   if st else False,
+            "btn_a":    st.btn_a   if st else False,
+            "btn_x":    st.btn_x   if st else False,
+            "btn_b":    st.btn_b   if st else False,
             "speed_limit": settings.CTRL_SPEED_LIMIT,
         })
 

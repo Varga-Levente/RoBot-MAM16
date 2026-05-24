@@ -240,12 +240,19 @@ class LoraSender:
 
     # ── Parancsküldés ─────────────────────────────────────────────────────────
 
-    def send_command(self, linear: float, angular: float) -> bool:
+    def send_command(self, linear: float, angular: float,
+                     lateral: float = 0.0, left_y: float = 0.0) -> bool:
         payload = json.dumps({
             "cmd":     "move",
             "linear":  round(linear,  4),
             "angular": round(angular, 4),
+            "lateral": round(lateral, 4),
+            "left_y":  round(left_y,  4),
         }).encode()
+        return self._send_raw(self._encrypt(payload))
+
+    def send_jump(self, direction: str) -> bool:
+        payload = json.dumps({"cmd": "jump", "direction": direction}).encode()
         return self._send_raw(self._encrypt(payload))
 
     def send_stop(self) -> bool:

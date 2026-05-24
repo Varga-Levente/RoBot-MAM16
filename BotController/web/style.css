@@ -269,3 +269,54 @@ button.primary:hover { background: #93c5fd; }
 }
 .save-status.ok  { color: var(--success); }
 .save-status.err { color: var(--danger);  }
+
+/* ── Gombállapotok ──────────────────────────────────────────────────────── */
+.btn-states {
+  display: flex;
+  gap: 10px;
+  justify-content: center;
+  margin-top: 12px;
+}
+.bs {
+  width: 34px; height: 34px;
+  border-radius: 50%;
+  border: 1.5px solid rgba(148,163,184,0.3);
+  background: rgba(0,0,0,0.35);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 11px;
+  font-weight: 700;
+  color: rgba(148,163,184,0.5);
+  transition: background 0.08s, color 0.08s, border-color 0.08s, box-shadow 0.08s;
+  user-select: none;
+}
+.bs.active { color: #fff; }
+.bs-y.active { background: #a16207; border-color: #eab308; box-shadow: 0 0 10px #eab30880; }
+.bs-a.active { background: #15803d; border-color: #22c55e; box-shadow: 0 0 10px #22c55e80; }
+.bs-x.active { background: #1d4ed8; border-color: #3b82f6; box-shadow: 0 0 10px #3b82f680; }
+.bs-b.active { background: #b91c1c; border-color: #ef4444; box-shadow: 0 0 10px #ef444480; }
+
+/* ── Robot vászon ───────────────────────────────────────────────────────── */
+#robot-canvas {
+  display: block;
+  width: 100%;
+  max-width: 300px;
+  margin: 0 auto;
+  border-radius: 8px;
+  background: rgba(0,0,0,0.3);
+}
+.jump-indicator {
+  text-align: center;
+  margin-top: 8px;
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 1px;
+  color: var(--muted);
+  min-height: 20px;
+  transition: color 0.15s;
+}
+.jump-indicator.active { color: #f59e0b; }
+
+/* bal stick Y knob szín */
+.stick-knob-ly { background: var(--accent2); box-shadow: 0 0 6px rgba(167,139,250,0.6); }
