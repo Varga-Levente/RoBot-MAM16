@@ -127,6 +127,12 @@ LORA_HMAC_KEY  = b"change_me_hmac_key_32bytes!!"
 
 # Verseny: internet nélkül állítsd üresre
 STREAM_STUN_SERVER = ""
+
+# Mecanum motor vezérlés (4 kerék: FL/FR/RL/RR)
+# FL = linear+lateral+angular, FR = linear-lateral-angular
+# RL = linear-lateral+angular, RR = linear+lateral-angular
+MOTOR_JUMP_DURATION = 1.0   # Ugrás impulzus hossza (s) — a LoRa JSON payload "duration" mezője felülírja
+MOTOR_JUMP_POWER    = 1.0   # Ugrás ereje (0.0–1.0)
 ```
 
 ---
@@ -308,7 +314,7 @@ gst-launch-1.0 nvarguscamerasrc ! nvvidconv ! xvimagesink
 ```bash
 # UART ellenőrzése
 ls -la /dev/ttyTHS2
-python3.8 -c "import serial; s=serial.Serial('/dev/ttyTHS2',9600); print('OK')"
+python3.8 -c "import serial; s=serial.Serial('/dev/ttyTHS2', 9600); print('OK')"
 # GPIO jogosultság
 sudo usermod -a -G gpio $USER
 ```
