@@ -1,7 +1,7 @@
 # MAM16 BotCode — Robot szoftver
 
 A Magyarok a Marson versenyhez készült robot szoftvere.  
-Platform: **Nvidia Jetson Nano Dev Kit** | Nyelv: **Python 3.10+**
+Platform: **Nvidia Jetson Nano Dev Kit** | Nyelv: **Python 3.8+** (deadsnakes PPA)
 
 ---
 
@@ -27,7 +27,7 @@ Minden komponens egy önálló asyncio task, queue-kon kommunikálnak egymással
 | `components/ir_transmitter.py` | 38kHz modulált IR jel küldés UART-on |
 | `components/lora_comm.py` | E22-900T22D-V2 LoRa (UART), AES-128 titkosítással |
 | `components/oled_display.py` | 0.91" SSD1306 OLED kijelző |
-| `components/motor_controller.py` | DRV8833 + 4× N20 motor |
+| `components/motor_controller.py` | DRV8833 + 4× N20 Mecanum motor (FL/FR/RL/RR) |
 | `components/stream_server.py` | aiortc WebRTC stream + aiohttp web UI |
 | `utils/logger.py` | Logging: konzol + fájl + SSE broadcast |
 | `settings.py` | **Minden** konfigurálható paraméter |
@@ -93,6 +93,12 @@ sudo systemctl disable nvgetty
 
 ### Jetson-specifikus megjegyzések
 
+- **Python 3.8**: A Jetson Nano JetPack alapértelmezett Python verziója 3.6. Python 3.8 telepítéséhez a deadsnakes PPA szükséges:
+  ```bash
+  sudo add-apt-repository ppa:deadsnakes/ppa
+  sudo apt-get update
+  sudo apt-get install python3.8 python3.8-venv python3.8-dev
+  ```
 - **OpenCV**: Ajánlott a [Jetson előre fordított build](https://github.com/mdegans/nano_build_opencv) — gyorsabb, CUDA-képes.
 - **Jetson.GPIO**: A JetPack-kel együtt telepítve van. Ha manuálisan kell: `pip install Jetson.GPIO`.
 - **GStreamer**: Alapértelmezetten telepítve JetPack-kel (`nvarguscamerasrc` plugin).
@@ -221,8 +227,14 @@ python -m components.camera --video test.mp4
 ### Motor (billentyűzetes vezérlés, hardver szükséges)
 ```bash
 python -m components.motor_controller
-# W=előre, S=hátra, A=bal, D=jobb, X=stop, Q=kilépés
+# W=előre, S=hátra, A=bal kanyar, D=jobb kanyar, Q=Mecanum bal oldalazás, E=Mecanum jobb oldalazás, X=stop
 ```
+
+A motor vezérlő 4 db Mecanum kereket hajt (FL/FR/RL/RR). A Mecanum képlet:
+- **FL** = linear + lateral + angular
+- **FR** = linear − lateral − angular
+- **RL** = linear − lateral + angular
+- **RR** = linear + lateral − angular
 
 ### OLED kijelző (hardver szükséges)
 ```bash
