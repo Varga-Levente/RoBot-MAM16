@@ -1,7 +1,7 @@
 # MAM16 BotController — Távirányító szoftver
 
 Xbox One USB kontroller → Raspberry Pi 3B+ → E22-900T22D-V2 LoRa → robot.  
-Platform: **Raspberry Pi 3B+** | Nyelv: **Python 3.10+**
+Platform: **Raspberry Pi 3B+** | Nyelv: **Python 3.x**
 
 ---
 
@@ -10,9 +10,9 @@ Platform: **Raspberry Pi 3B+** | Nyelv: **Python 3.10+**
 ```
 main.py
   │
-  ├── ControllerState     ← megosztott állapot (gamepad, LoRa, linear/angular)
+  ├── ControllerState     ← megosztott állapot (gamepad, LoRa, linear/angular/lateral)
   │
-  ├── GamepadReader  ──── evdev Xbox One USB → (linear, angular)
+  ├── GamepadReader  ──── evdev Xbox One USB → (linear, angular, lateral, left_y=0, jump_dir)
   ├── LoraSender     ──── E22-900T22D-V2 UART, AES-128 + HMAC, handshake + küldés
   └── ControllerWebServer ← aiohttp beállítás UI + config.json perzisztencia
 ```
@@ -21,10 +21,10 @@ main.py
 
 ```
 Xbox One (USB)
-    │  evdev ABS_X / ABS_Z / ABS_RZ
+    │  evdev ABS_X / ABS_Z / ABS_RZ / ABS_RX
     ▼
 GamepadReader.read_state()
-    │  (linear, angular) −1.0 .. 1.0
+    │  (linear, angular, lateral, left_y=0, jump_dir) −1.0 .. 1.0
     ▼  deadzone + speed_limit szűrés
 LoraSender.send_command()
     │  JSON → AES-128 CTR → HMAC-SHA256
@@ -32,7 +32,7 @@ LoraSender.send_command()
 E22-900T22D-V2 LoRa 868.125 MHz
     │
     ▼
-Robot (BotCode) → motor_controller
+Robot (BotCode) → motor_controller (Mecanum)
 ```
 
 ### Komponensek
@@ -44,7 +44,7 @@ Robot (BotCode) → motor_controller
 | `controller_input.py` | evdev Xbox gamepad olvasó, deadzone, speed limit |
 | `lora_sender.py` | E22-900T22D-V2 UART, titkosítás, challenge-response handshake |
 | `web_server.py` | aiohttp beállítás UI, config.json perzisztencia |
-| `web/` | Sötét glassmorphism UI, live joystick canvas |
+| `web/` | Sötét glassmorphism UI, live joystick canvas, Mecanum vizualizáció |
 
 ---
 
@@ -138,6 +138,7 @@ CTRL_SPEED_LIMIT    = 1.0    # 0.0–1.0: sebesség korlát (100% = teljes sebes
 CTRL_DEADZONE       = 0.05   # holtzona normalizált értékben
 CTRL_SEND_HZ        = 20     # parancsküldés frekvenciája
 CTRL_GAMEPAD_DEVICE = ""     # "" = automatikus keresés
+CTRL_JUMP_DURATION  = 1.0    # ugrás impulzus hossza másodpercben (0.1–5.0s)
 ```
 
 ### Perzisztens beállítások (`config.json`)
@@ -175,34 +176,30 @@ python main.py --speed-limit 0.5 --device /dev/input/event3
 
 ---
 
-## Beállítás web UI
-
-Indítás után a böngészőben elérhető:
-
-```
-http://<raspberry-pi-ip>:8081
-```
-
-### Funkciók
-
-- **Valós idejű állapot:** joystick pozíció canvas-on, LT/RT trigger bar-ok, LoRa és gamepad kapcsolat státusz
-- **Vezérlés beállítások:** sebesség limit slider (0–100%), holtzona slider, küldési sebesség (10/20/50 Hz), gamepad eszköz
-- **LoRa beállítások:** UART port, M0/M1/AUX pin (BCM), csatorna, TX teljesítmény — mentés után automatikusan újrainicializálja a LoRa modult
-- **Perzisztencia:** minden mentés azonnal érvényes futás közben, és `config.json`-ba íródik (megmarad újraindítás után)
-
----
-
 ## Vezérlés
 
 ### Tengely kiosztás
 
 | Gomb / Tengely | Funkció | Irány |
 |----------------|---------|-------|
-| **RT** (jobb trigger) | Előremenet | Minél jobban húzva → annál gyorsabb |
-| **LT** (bal trigger) | Hátramenet | Minél jobban húzva → annál gyorsabb |
-| **Bal joystick X** | Kanyar | Bal → balra, Jobb → jobbra |
+| **RT** (jobb trigger) | Előremenet (linear+) | Minél jobban húzva → annál gyorsabb |
+| **LT** (bal trigger) | Hátramenet (linear−) | Minél jobban húzva → annál lassabb/hátrább |
+| **Bal joystick X** | Kanyarodás (angular) | Bal → balra fordul, Jobb → jobbra fordul |
+| **Bal joystick Y** | Figyelmen kívül hagyva | — |
+| **Jobb joystick X** | Mecanum oldalazás (lateral) | Bal → balra csúszik, Jobb → jobbra csúszik |
 
 > RT és LT egyszerre is húzható — a nettó lineáris sebesség az RT−LT különbsége.
+
+### Ugrás (burst) gombok
+
+| Gomb | Funkció |
+|------|---------|
+| **Y** | 1 mp-es előre ugrás (burst) |
+| **A** | 1 mp-es hátra ugrás |
+| **X** | 1 mp-es Mecanum bal oldalazás burst |
+| **B** | 1 mp-es Mecanum jobb oldalazás burst |
+
+Az ugrás időtartama alapértelmezetten **1.0 s**, a web UI-ból 0.1–5.0 s között állítható. A `duration` mező a JSON payloadban kerül elküldésre, a robot ezt veszi figyelembe.
 
 ### Sebesség limit
 
@@ -213,12 +210,36 @@ A `CTRL_SPEED_LIMIT` (0.0–1.0) az összes tengelyt lineárisan skálázza. Ha 
 
 ---
 
+## Beállítás web UI
+
+Indítás után a böngészőben elérhető:
+
+```
+http://<raspberry-pi-ip>:8081
+```
+
+### Funkciók
+
+- **Valós idejű állapot:** LT/RT trigger bar-ok, joystick canvas (angular/lateral), LoRa és gamepad kapcsolat státusz, sebesség kijelző
+- **Kontroller vizualizáció:** Y/A/X/B gombállapot jelzők, Lat/LY csúszkák
+- **Mecanum robot vizualizáció canvas:** top-down nézet, 4 kerék (FL/FR/RL/RR) valós idejű sebességgel és iránnyal, mozgásnyilak, gombállapotok
+- **Vezérlés beállítások:** sebesség limit slider (0–100%), holtzona slider, küldési sebesség (10/20/50 Hz), ugrás időtartam slider (0.1–5.0 s), gamepad eszköz
+- **LoRa beállítások:** UART port, M0/M1/AUX pin (BCM), csatorna (0–80), TX teljesítmény — mentés után automatikusan újrainicializálja a LoRa modult
+- **Perzisztencia:** minden mentés azonnal érvényes futás közben, és `config.json`-ba íródik (megmarad újraindítás után)
+
+---
+
 ## LoRa titkosítás és handshake
 
 ### Csomag formátum
 
 ```
 [device_id: 4B][nonce: 8B][ciphertext: variable][HMAC-SHA256: 32B]
+```
+
+Keret szintű burkolás:
+```
+[0xAA][0x55][len_hi][len_lo][payload]
 ```
 
 - **AES-128 CTR** mód (pycryptodome)
