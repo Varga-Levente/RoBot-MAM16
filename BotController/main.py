@@ -147,6 +147,7 @@ async def _control_tick(
     elif state.lora_hw_ok and state.lora_authenticated:
         if jump_dir:
             sender.send_jump(jump_dir, settings.CTRL_JUMP_DURATION)
+            gamepad.queue_rumble(500, 0x8000, 0x5000)  # ugrás visszajelzés
         elif moving:
             sender.send_command(linear, angular, lateral, left_y)
         elif int(t0) % max(1, settings.CTRL_SEND_HZ) == 0:

@@ -25,7 +25,7 @@ log = logging.getLogger("ctrl")
 
 try:
     import evdev
-    from evdev import ecodes
+    from evdev import ecodes, ff
     _EVDEV_OK = True
 except ImportError:
     _EVDEV_OK = False
@@ -58,9 +58,11 @@ class GamepadReader:
             self._AXIS_LX: 0, self._AXIS_LY: 0,
             self._AXIS_LT: 0, self._AXIS_RX: 0, self._AXIS_RT: 0,
         }
-        self._btn_state: dict = {k: False for k in _JUMP_MAP}
-        self._pending_jump    = None
-        self._ranges: dict    = {}
+        self._btn_state: dict    = {k: False for k in _JUMP_MAP}
+        self._pending_jump       = None
+        self._ranges: dict       = {}
+        self._ff_ok: bool        = False
+        self._pending_rumble: tuple = ()   # (duration_ms, strong, weak)
 
         self.raw_lt:  float = 0.0
         self.raw_rt:  float = 0.0
@@ -100,7 +102,11 @@ class GamepadReader:
             self._dev = evdev.InputDevice(target)
             self._dev.grab()
             self._detect_ranges()
-            log.info(f"Gamepad megnyitva: {self._dev.name} ({target})")
+            caps = self._dev.capabilities()
+            self._ff_ok = ecodes.FF_RUMBLE in caps.get(ecodes.EV_FF, [])
+            log.info(f"Gamepad megnyitva: {self._dev.name} ({target})"
+                     f"{' [rumble OK]' if self._ff_ok else ''}")
+            self._do_rumble(250, 0x7000, 0x3000)  # init visszajelzés
             return True
         except Exception as e:
             log.error(f"Gamepad megnyitási hiba ({target}): {e}")
@@ -132,11 +138,38 @@ class GamepadReader:
         sign = 1.0 if val > 0 else -1.0
         return sign * (abs(val) - dz) / (1.0 - dz)
 
+    # ── Force Feedback (rumble) ───────────────────────────────────────────────
+
+    def _do_rumble(self, duration_ms: int, strong: int, weak: int) -> None:
+        """Rumble effekt azonnali lejátszása (executor thread-ből hívandó)."""
+        if not _EVDEV_OK or not self._ff_ok or not self._dev:
+            return
+        try:
+            rumble = ff.Rumble(strong_magnitude=strong, weak_magnitude=weak)
+            effect = ff.Effect(
+                ecodes.FF_RUMBLE, -1, 0,
+                ff.Trigger(0, 0),
+                ff.Replay(duration_ms, 0),
+                ff.EffectType(ff_rumble_effect=rumble),
+            )
+            effect_id = self._dev.upload_effect(effect)
+            self._dev.write(ecodes.EV_FF, effect_id, 1)
+        except Exception as e:
+            log.debug(f"Rumble hiba: {e}")
+
+    def queue_rumble(self, duration_ms: int = 300,
+                     strong: int = 0x8000, weak: int = 0x4000) -> None:
+        """Rezgés bejegyezése az asyncio event loopból — poll() hajtja végre."""
+        self._pending_rumble = (duration_ms, strong, weak)
+
     # ── Polling ───────────────────────────────────────────────────────────────
 
     def poll(self) -> None:
         if not _EVDEV_OK or not self._dev:
             return
+        if self._pending_rumble:
+            self._do_rumble(*self._pending_rumble)
+            self._pending_rumble = ()
         try:
             for event in self._dev.read():
                 if event.type == ecodes.EV_ABS and event.code in self._state:
