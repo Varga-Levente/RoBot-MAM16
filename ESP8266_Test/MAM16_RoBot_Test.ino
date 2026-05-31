@@ -6,7 +6,8 @@
 //    - WiFi Access Point (hotspot)
 //    - Webes vezérlőfelület (WASD + QE + X + L)
 //    - Mecanum kerekek (DRV8833 driver)
-//    - LED villogtatás
+//    - Sebesség csúszka (0–100%)
+//    - LED: BE / KI / Villogás
 //
 //  Szükséges könyvtár: ESP8266WiFi (beépített az ESP8266 board csomagban)
 // =============================================================================
@@ -35,9 +36,10 @@ static const char INDEX_HTML[] PROGMEM = R"rawhtml(
       align-items: center;
       min-height: 100vh;
       padding: 20px;
-      gap: 20px;
+      gap: 18px;
     }
     h1 { font-size: 1.4em; color: #00d4ff; letter-spacing: 2px; }
+
     #status {
       background: #16213e;
       border: 1px solid #0f3460;
@@ -49,6 +51,27 @@ static const char INDEX_HTML[] PROGMEM = R"rawhtml(
       text-align: center;
     }
     #status span { color: #00d4ff; font-weight: bold; }
+
+    /* ── Sebesség csúszka ── */
+    .speed-row {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      background: #16213e;
+      border: 1px solid #0f3460;
+      border-radius: 8px;
+      padding: 10px 16px;
+      min-width: 280px;
+    }
+    .speed-row label { font-size: 0.85em; color: #aaa; white-space: nowrap; }
+    .speed-row input[type=range] {
+      flex: 1;
+      accent-color: #00d4ff;
+      cursor: pointer;
+    }
+    #speed-val { color: #00d4ff; font-weight: bold; min-width: 36px; text-align: right; }
+
+    /* ── Mozgás gombok ── */
     .grid {
       display: grid;
       grid-template-columns: repeat(3, 70px);
@@ -75,14 +98,44 @@ static const char INDEX_HTML[] PROGMEM = R"rawhtml(
     .btn:active, .btn.pressed { background: #0f3460; border-color: #00d4ff; color: #00d4ff; }
     .btn.stop  { border-color: #ff4444; color: #ff4444; }
     .btn.stop:active, .btn.stop.pressed { background: #3a0000; border-color: #ff6666; }
-    .btn.led   { border-color: #ffcc00; color: #ffcc00; }
-    .btn.led:active, .btn.led.pressed { background: #2a2000; border-color: #ffee44; }
-    .btn.led.active { background: #2a2000; border-color: #ffee44; color: #ffee44; }
-    .extra {
+
+    /* ── LED panel ── */
+    .led-panel {
       display: flex;
+      flex-direction: column;
+      align-items: center;
       gap: 8px;
+      background: #16213e;
+      border: 1px solid #0f3460;
+      border-radius: 8px;
+      padding: 12px 20px;
+      min-width: 280px;
     }
-    .extra .btn { width: 100px; height: 70px; }
+    .led-panel .label { font-size: 0.8em; color: #aaa; }
+    .led-panel .indicator {
+      width: 28px; height: 28px;
+      border-radius: 50%;
+      background: #2a2000;
+      border: 2px solid #554400;
+      transition: background 0.15s, box-shadow 0.15s;
+    }
+    .led-panel .indicator.on {
+      background: #ffcc00;
+      border-color: #ffee44;
+      box-shadow: 0 0 10px #ffcc00aa;
+    }
+    .led-btns { display: flex; gap: 8px; }
+    .led-btns .btn { width: 80px; height: 44px; font-size: 0.85em; }
+    .btn.led-on   { border-color: #44ff88; color: #44ff88; }
+    .btn.led-on.active   { background: #003322; }
+    .btn.led-off  { border-color: #ff6644; color: #ff6644; }
+    .btn.led-off.active  { background: #330d00; }
+    .btn.led-blink { border-color: #ffcc00; color: #ffcc00; }
+    .btn.led-blink.active { background: #2a2000; border-color: #ffee44; color: #ffee44; }
+
+    .extra { display: flex; gap: 8px; }
+    .extra .btn { width: 148px; height: 54px; font-size: 0.95em; }
+
     .hint {
       font-size: 0.75em;
       color: #555;
@@ -95,6 +148,13 @@ static const char INDEX_HTML[] PROGMEM = R"rawhtml(
   <h1>MAM16 RoBot Teszt</h1>
 
   <div id="status">Parancs: <span id="cmd">–</span></div>
+
+  <!-- Sebesség csúszka -->
+  <div class="speed-row">
+    <label>Sebesség:</label>
+    <input type="range" id="speed" min="0" max="100" value="80">
+    <span id="speed-val">80%</span>
+  </div>
 
   <!-- WASD + QE gombmátrix -->
   <div class="grid">
@@ -109,23 +169,44 @@ static const char INDEX_HTML[] PROGMEM = R"rawhtml(
     <div></div>
   </div>
 
-  <!-- X stop + L LED -->
+  <!-- Emergency STOP -->
   <div class="extra">
-    <button class="btn stop" id="btn-x" data-key="x">X<small>E-STOP</small></button>
-    <button class="btn led"  id="btn-l" data-key="l">L<small>LED</small></button>
+    <button class="btn stop" id="btn-x">X<small>EMERGENCY STOP</small></button>
+  </div>
+
+  <!-- LED panel -->
+  <div class="led-panel">
+    <span class="label">LED állapot</span>
+    <div class="indicator" id="led-indicator"></div>
+    <div class="led-btns">
+      <button class="btn led-on"    id="btn-led-on">BE</button>
+      <button class="btn led-off"   id="btn-led-off">KI</button>
+      <button class="btn led-blink" id="btn-led-blink">Villog<br><small>1s / 1s</small></button>
+    </div>
   </div>
 
   <div class="hint">
-    Billentyűzet: W A S D &nbsp;|&nbsp; Q E &nbsp;|&nbsp; X &nbsp;|&nbsp; L<br>
-    Nyomva tartva folyamatos mozgás • X = azonnali leállás
+    Billentyűzet: W A S D &nbsp;|&nbsp; Q E &nbsp;|&nbsp; X &nbsp;|&nbsp; L = villogás<br>
+    Nyomva tartva folyamatos mozgás &nbsp;•&nbsp; X = azonnali leállás
   </div>
 
 <script>
   const MOVE_KEYS = ['w','a','s','d','q','e'];
-  let activeKey = null;
-  let ledOn = false;
-  let moveTimer = null;
+  let activeKey  = null;
+  let moveTimer  = null;
+  let ledMode    = 'off';   // 'off' | 'on' | 'blink'
+  let speedPct   = 80;
 
+  // ── Sebesség ──
+  const speedSlider = document.getElementById('speed');
+  const speedLabel  = document.getElementById('speed-val');
+  speedSlider.addEventListener('input', () => {
+    speedPct = parseInt(speedSlider.value);
+    speedLabel.textContent = speedPct + '%';
+    fetch('/speed?v=' + speedPct).catch(() => {});
+  });
+
+  // ── Mozgás ──
   function send(cmd) {
     document.getElementById('cmd').textContent = cmd.toUpperCase();
     fetch('/cmd?k=' + cmd).catch(() => {});
@@ -149,40 +230,45 @@ static const char INDEX_HTML[] PROGMEM = R"rawhtml(
     send('x');
   }
 
-  // Billentyűzet
   document.addEventListener('keydown', e => {
     if (e.repeat) return;
     const k = e.key.toLowerCase();
-    if (MOVE_KEYS.includes(k)) { e.preventDefault(); startMove(k); }
-    else if (k === 'x') { e.preventDefault(); stopMove(); send('x'); }
-    else if (k === 'l') { e.preventDefault(); toggleLed(); }
+    if (MOVE_KEYS.includes(k))  { e.preventDefault(); startMove(k); }
+    else if (k === 'x')         { e.preventDefault(); stopMove(); }
+    else if (k === 'l')         { e.preventDefault(); setLed('blink'); }
   });
   document.addEventListener('keyup', e => {
     const k = e.key.toLowerCase();
     if (MOVE_KEYS.includes(k) && k === activeKey) stopMove();
   });
 
-  // Érintő / egér gombok
   document.querySelectorAll('.btn[data-key]').forEach(btn => {
     const k = btn.dataset.key;
-    if (k === 'l') {
-      btn.addEventListener('click', toggleLed);
-      return;
-    }
-    if (k === 'x') {
-      btn.addEventListener('pointerdown', () => { stopMove(); send('x'); });
-      return;
-    }
     btn.addEventListener('pointerdown', () => startMove(k));
     btn.addEventListener('pointerup',   stopMove);
     btn.addEventListener('pointerleave', stopMove);
   });
+  document.getElementById('btn-x').addEventListener('pointerdown', () => { stopMove(); send('x'); });
 
-  function toggleLed() {
-    ledOn = !ledOn;
-    document.getElementById('btn-l').classList.toggle('active', ledOn);
-    send('l');
+  // ── LED ──
+  function setLed(mode) {
+    ledMode = mode;
+    fetch('/led?m=' + mode).catch(() => {});
+    document.getElementById('btn-led-on').classList.toggle('active',    mode === 'on');
+    document.getElementById('btn-led-off').classList.toggle('active',   mode === 'off');
+    document.getElementById('btn-led-blink').classList.toggle('active', mode === 'blink');
   }
+
+  document.getElementById('btn-led-on').addEventListener('click',    () => setLed('on'));
+  document.getElementById('btn-led-off').addEventListener('click',   () => setLed('off'));
+  document.getElementById('btn-led-blink').addEventListener('click', () => setLed('blink'));
+
+  // LED visszajelző polling (500ms-enként kérdezi az ESP-t)
+  setInterval(() => {
+    fetch('/ledstate').then(r => r.text()).then(s => {
+      document.getElementById('led-indicator').classList.toggle('on', s === '1');
+    }).catch(() => {});
+  }, 500);
 </script>
 </body>
 </html>
@@ -192,17 +278,18 @@ static const char INDEX_HTML[] PROGMEM = R"rawhtml(
 
 ESP8266WebServer server(80);
 
-// Motor pin tömbök [FL, FR, RL, RR]
 const uint8_t IN1[4] = { MOTOR_FL_IN1, MOTOR_FR_IN1, MOTOR_RL_IN1, MOTOR_RR_IN1 };
 const uint8_t IN2[4] = { MOTOR_FL_IN2, MOTOR_FR_IN2, MOTOR_RL_IN2, MOTOR_RR_IN2 };
 
-bool ledBlinking   = false;
-bool ledState      = false;
+int  motorSpeed     = MOTOR_SPEED;   // 0–1023, felülírható a /speed végponton
+
+// LED állapot: 0=ki, 1=be, 2=villog
+uint8_t ledMode     = 0;
+bool    ledState    = false;
 unsigned long ledLastToggle = 0;
 
 // ── Motor vezérlés ────────────────────────────────────────────────────────────
 
-// speed: -1023 .. +1023
 void setMotor(uint8_t id, int speed) {
     speed = constrain(speed, -1023, 1023);
     if (speed > 0) {
@@ -217,22 +304,19 @@ void setMotor(uint8_t id, int speed) {
     }
 }
 
-// Mecanum kinematika — azonos a Jetson Nano kóddal
-// linear: előre/hátra, angular: fordulás, lateral: oldalra csúszás
 void setMecanum(float linear, float angular, float lateral) {
     float fl = linear + lateral + angular;
     float fr = linear - lateral - angular;
     float rl = linear - lateral + angular;
     float rr = linear + lateral - angular;
 
-    // Normalizálás: max érték nem lépheti túl az 1.0-t
     float mx = max(max(abs(fl), abs(fr)), max(abs(rl), abs(rr)));
     if (mx > 1.0f) { fl /= mx; fr /= mx; rl /= mx; rr /= mx; }
 
-    setMotor(0, (int)(fl * MOTOR_SPEED));
-    setMotor(1, (int)(fr * MOTOR_SPEED));
-    setMotor(2, (int)(rl * MOTOR_SPEED));
-    setMotor(3, (int)(rr * MOTOR_SPEED));
+    setMotor(0, (int)(fl * motorSpeed));
+    setMotor(1, (int)(fr * motorSpeed));
+    setMotor(2, (int)(rl * motorSpeed));
+    setMotor(3, (int)(rr * motorSpeed));
 }
 
 void emergencyStop() {
@@ -244,7 +328,7 @@ void emergencyStop() {
 
 // ── LED ───────────────────────────────────────────────────────────────────────
 
-void setLed(bool on) {
+void applyLed(bool on) {
     ledState = on;
 #if LED_ACTIVE_LOW
     digitalWrite(LED_PIN, on ? LOW : HIGH);
@@ -261,23 +345,40 @@ void handleRoot() {
 
 void handleCmd() {
     if (!server.hasArg("k")) { server.send(400, "text/plain", "missing k"); return; }
-
     String key = server.arg("k");
     key.toLowerCase();
 
-    if      (key == "w") setMecanum( 1.0f,  0.0f,  0.0f);   // Előre
-    else if (key == "s") setMecanum(-1.0f,  0.0f,  0.0f);   // Hátra
-    else if (key == "a") setMecanum( 0.0f,  0.0f, -1.0f);   // Mecanum balra
-    else if (key == "d") setMecanum( 0.0f,  0.0f,  1.0f);   // Mecanum jobbra
-    else if (key == "q") setMecanum( 0.0f, -1.0f,  0.0f);   // Fordulás balra
-    else if (key == "e") setMecanum( 0.0f,  1.0f,  0.0f);   // Fordulás jobbra
-    else if (key == "x") emergencyStop();                     // Emergency STOP
-    else if (key == "l") {                                    // LED villogás toggle
-        ledBlinking = !ledBlinking;
-        if (!ledBlinking) setLed(false);
-    }
+    if      (key == "w") setMecanum( 1.0f,  0.0f,  0.0f);
+    else if (key == "s") setMecanum(-1.0f,  0.0f,  0.0f);
+    else if (key == "a") setMecanum( 0.0f,  0.0f, -1.0f);
+    else if (key == "d") setMecanum( 0.0f,  0.0f,  1.0f);
+    else if (key == "q") setMecanum( 0.0f, -1.0f,  0.0f);
+    else if (key == "e") setMecanum( 0.0f,  1.0f,  0.0f);
+    else if (key == "x") emergencyStop();
 
     server.send(200, "text/plain", "ok");
+}
+
+void handleSpeed() {
+    if (!server.hasArg("v")) { server.send(400, "text/plain", "missing v"); return; }
+    int pct = constrain(server.arg("v").toInt(), 0, 100);
+    motorSpeed = (pct * 1023) / 100;
+    server.send(200, "text/plain", "ok");
+}
+
+void handleLed() {
+    if (!server.hasArg("m")) { server.send(400, "text/plain", "missing m"); return; }
+    String mode = server.arg("m");
+
+    if (mode == "on")    { ledMode = 1; applyLed(true); }
+    else if (mode == "off")   { ledMode = 0; applyLed(false); }
+    else if (mode == "blink") { ledMode = 2; }
+
+    server.send(200, "text/plain", "ok");
+}
+
+void handleLedState() {
+    server.send(200, "text/plain", ledState ? "1" : "0");
 }
 
 // ── Setup ─────────────────────────────────────────────────────────────────────
@@ -286,7 +387,6 @@ void setup() {
     Serial.begin(115200);
     Serial.println("\nMAM16 RoBot ESP8266 Teszt indul...");
 
-    // Motor pinek
     analogWriteFreq(MOTOR_PWM_FREQ);
     analogWriteRange(1023);
     for (uint8_t i = 0; i < 4; i++) {
@@ -296,18 +396,18 @@ void setup() {
         analogWrite(IN2[i], 0);
     }
 
-    // LED
     pinMode(LED_PIN, OUTPUT);
-    setLed(false);
+    applyLed(false);
 
-    // WiFi AP
     WiFi.softAP(WIFI_SSID, WIFI_PASSWORD);
     Serial.print("AP elindult — IP: ");
     Serial.println(WiFi.softAPIP());
 
-    // Webszerver
-    server.on("/",    handleRoot);
-    server.on("/cmd", handleCmd);
+    server.on("/",         handleRoot);
+    server.on("/cmd",      handleCmd);
+    server.on("/speed",    handleSpeed);
+    server.on("/led",      handleLed);
+    server.on("/ledstate", handleLedState);
     server.begin();
     Serial.println("Webszerver fut — nyisd meg: http://192.168.4.1");
 }
@@ -317,12 +417,11 @@ void setup() {
 void loop() {
     server.handleClient();
 
-    // LED villogtatás (nem blokkoló)
-    if (ledBlinking) {
+    if (ledMode == 2) {
         unsigned long now = millis();
         if (now - ledLastToggle >= LED_BLINK_MS) {
             ledLastToggle = now;
-            setLed(!ledState);
+            applyLed(!ledState);
         }
     }
 }
