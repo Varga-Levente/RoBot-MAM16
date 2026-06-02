@@ -9,6 +9,7 @@ Végpontok:
   GET  /api/status    → kontroller valós idejű állapot
 """
 
+import asyncio
 import json
 import logging
 import os
