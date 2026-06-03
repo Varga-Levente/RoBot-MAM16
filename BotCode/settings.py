@@ -90,7 +90,7 @@ IR_PWM_PIN         = 32              # Jetson Nano hardware PWM pin (BCM); -1 = 
 # EBYTE E22-900T22D-V2 LoRa modul (UART interfész)
 # Frekvencia: 850.125 + LORA_CHANNEL MHz  (pl. csatorna 18 → 868.125 MHz)
 
-LORA_UART_PORT = "/dev/ttyTHS2"  # Jetson Nano UART port
+LORA_UART_PORT = "/dev/ttyTHS1"  # Jetson Nano UART port (40-pin header pin 8/10)
 LORA_UART_BAUD = 9600            # Alapértelmezett UART baudrate
 
 # GPIO pin kiosztás (BCM számozás) — M0/M1: mód vezérlés, AUX: kész jelző
