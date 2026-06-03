@@ -161,8 +161,10 @@ class MotorController:
         log.info("Motor parancs hurok elindult (Mecanum)")
         while True:
             try:
-                cmd = await asyncio.wait_for(command_queue.get(), timeout=1.0)
+                cmd = await asyncio.wait_for(command_queue.get(), timeout=0.5)
             except asyncio.TimeoutError:
+                # Ha 0.5s-ig nem érkezett parancs → LoRa megszakadt → megállás
+                self.emergency_stop()
                 continue
 
             action = cmd.get("cmd", "")
