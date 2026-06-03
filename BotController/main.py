@@ -148,10 +148,9 @@ async def _control_tick(
         if jump_dir:
             sender.send_jump(jump_dir, settings.CTRL_JUMP_DURATION)
             gamepad.queue_rumble(500, 0x8000, 0x5000)  # ugrás visszajelzés
-        elif moving:
+        else:
+            # Mindig küldi a parancsot 20Hz-en — trigger elengedéskor azonnal megáll
             sender.send_command(linear, angular, lateral, left_y)
-        elif int(t0) % max(1, settings.CTRL_SEND_HZ) == 0:
-            sender.send_stop()
 
     elapsed = loop.time() - t0
     await asyncio.sleep(max(0.0, interval - elapsed))
