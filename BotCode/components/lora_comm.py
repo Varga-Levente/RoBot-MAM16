@@ -213,7 +213,7 @@ class LoRaComm:
 
         while True:
             now = loop.time()
-            if now - _last_nonce_tx >= 5.0:
+            if not self._authenticated and now - _last_nonce_tx >= 5.0:
                 await loop.run_in_executor(None, self._send_raw, self._challenge)
                 log.info("LoRa handshake nonce elküldve, várakozás hitelesítésre...")
                 _last_nonce_tx = now
