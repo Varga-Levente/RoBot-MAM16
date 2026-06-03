@@ -3,7 +3,17 @@
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 BOTCODE="$SCRIPT_DIR/BotCode"
-PY="python3.8"
+
+if [ -f "$BOTCODE/venv/bin/python" ]; then
+    PY="$BOTCODE/venv/bin/python"
+elif command -v python3.8 &>/dev/null; then
+    PY="python3.8"
+elif command -v python3 &>/dev/null; then
+    PY="python3"
+else
+    echo "HIBA: Python nem található!" >&2
+    exit 1
+fi
 VIDEOS_DIR="$HOME/Videos"
 
 C_CYAN='\033[0;36m'
