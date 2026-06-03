@@ -61,14 +61,12 @@ class OLEDDisplay:
         lora_icon = "*" if state.lora_connected else "x"
 
         with canvas(self._device) as draw:
-            # Sor 1: név + szerep
+            # Sor 1: név + szerep + LoRa
             draw.text((0,  0), f"{settings.ROBOT_NAME} [{role_icon}] {lora_icon}", fill="white", font=font)
-            # Sor 2: IP
-            draw.text((0,  8), state.ip_address or "nincs IP", fill="white", font=font)
-            # Sor 3: akkumulátor
-            draw.text((0, 16), f"Akku: {battery}", fill="white", font=font)
-            # Sor 4: kapu kód
-            draw.text((0, 24), f"Kod: {gate_code}", fill="white", font=font)
+            # Sor 2: IP cím
+            draw.text((0, 11), state.ip_address or "nincs IP", fill="white", font=font)
+            # Sor 3: kapu kód
+            draw.text((0, 22), f"Kod: {gate_code}", fill="white", font=font)
 
     async def update_loop(self, state) -> None:
         if not self._init_hardware():
