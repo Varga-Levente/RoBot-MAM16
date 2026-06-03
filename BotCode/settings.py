@@ -68,8 +68,9 @@ VISION_COOLDOWN_MS       = 500   # Sikeres kódolvasás után ennyi ms-ig nem in
 #   HW_PWM       — 1200 baud UART + Jetson Nano hardware PWM 38kHz vivő (IR_PWM_PIN-en)
 IR_ENABLED         = False           # False = IR adó letiltva (bekötésig)
 IR_MODE            = "CARRIER_UART"
-
-IR_UART_PORT       = "/dev/ttyTHS1"  # Jetson Nano hardware UART port
+# FONTOS: ttyTHS1 a LoRa-é. Az IR-hez USB-UART adapter szükséges (/dev/ttyUSB0),
+# vagy ttyTHS2 (device tree módosítás szükséges, vagy külső USB-soros kábel).
+IR_UART_PORT       = "/dev/ttyUSB0"  # USB-UART adapter TX → IR LED áramkör
 IR_BAUD_RATE       = 1200            # Soros kommunikáció baudrate (DIRECT_UART és HW_PWM módban)
 IR_DATA_BITS       = 8               # Adatbitek száma
 IR_PARITY          = "N"             # Paritás: "N"=nincs, "E"=páros, "O"=páratlan

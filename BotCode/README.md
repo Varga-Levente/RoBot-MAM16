@@ -36,38 +36,101 @@ Minden komponens egy önálló asyncio task, queue-kon kommunikálnak egymással
 
 ## Hardver előfeltételek
 
-### GPIO kiosztás (BCM számozás)
+### Jetson Nano 40-pin header — teljes bekötési terv
 
-| Funkció | BCM GPIO | 40-pin fizikai |
-|---------|---------|----------------|
-| Motor FL IN1 | 5 | 29 |
-| Motor FL IN2 | 6 | 31 |
-| Motor FR IN1 | 13 | 33 |
-| Motor FR IN2 | 19 | 35 |
-| Motor RL IN1 | 26 | 37 |
-| Motor RL IN2 | 24 | 18 |
-| Motor RR IN1 | 25 | 22 |
-| Motor RR IN2 | 8 | 24 |
+```
+ 1 [3V3]──OLED VCC, LoRa VCC n/a    2 [5V ]──DRV8833#1 VCC
+ 3 [SDA]──OLED SDA                  4 [5V ]──DRV8833#2 VCC
+ 5 [SCL]──OLED SCK                  6 [GND]──OLED GND
+ 7 [   ]                            8 [TX ]──LoRa RX      (ttyTHS1)
+ 9 [GND]──LoRa GND                 10 [RX ]──LoRa TX      (ttyTHS1)
+11 [   ]                           12 [   ]
+13 [   ]                           14 [GND]──DRV8833#1 GND
+15 [   ]                           16 [   ]
+17 [3V3]──LoRa VCC                 18 [BCM24]─Motor RL IN2
+19 [   ]                           20 [GND]──DRV8833#2 GND
+21 [   ]                           22 [BCM25]─Motor RR IN1
+23 [   ]                           24 [BCM8 ]─Motor RR IN2
+25 [GND]                           26 [   ]
+27 [   ]                           28 [   ]
+29 [BCM5 ]─Motor FL IN1            30 [GND]
+31 [BCM6 ]─Motor FL IN2            32 [BCM12]─IR LED (PWM0, tartalék)
+33 [BCM13]─Motor FR IN1            34 [GND]
+35 [BCM19]─Motor FR IN2            36 [   ]
+37 [BCM26]─Motor RL IN1            38 [   ]
+39 [GND]                           40 [   ]
+```
 
-### LoRa E22-900T22D-V2 bekötés (UART — Jetson 40-pin header)
+### LoRa — E22-900T22D-V2 (ttyTHS1)
 
-| E22 pin | Jetson 40-pin | Funkció |
-|---------|--------------|---------|
-| TX | Pin 10 (RX / ttyTHS1) | UART fogadás |
-| RX | Pin 8 (TX / ttyTHS1) | UART küldés |
-| GND | Pin 6 (GND) | Föld |
-| VCC | Pin 1 (3.3V) | Tápfeszültség |
+| E22 pin | Jetson 40-pin | |
+|---------|--------------|--|
+| TX | Pin 10 | UART fogadás (ttyTHS1 RX) |
+| RX | Pin 8 | UART küldés (ttyTHS1 TX) |
+| GND | Pin 9 | Föld |
+| VCC | Pin 17 | 3.3V tápfeszültség |
 
-> M0/M1/AUX **nem csatlakoztatva** — az E22 flash-be mentett konfigurációja
-> biztosítja a normál (transparent) módot. `settings.py`: `LORA_USE_GPIO = False`.
+> M0/M1/AUX **nincs bekötve** — az E22 flash-be mentett konfigja tartja a normál módot.
 
-### I2C / UART
+### OLED — SSD1306 0.91" (I2C Bus 1)
 
-| Eszköz | Protokoll | Port / Bus | Cím |
-|--------|-----------|-----------|-----|
-| SSD1306 OLED | I2C | Bus 1 (Pin 3/5) | 0x3C |
-| E22-900T22D-V2 LoRa | UART | `/dev/ttyTHS1` (Pin 8/10) | — |
-| IR LED | UART | `/dev/ttyTHS2` | — |
+| OLED pin | Jetson 40-pin | |
+|----------|--------------|--|
+| SCK | Pin 5 | I2C SCL |
+| SDA | Pin 3 | I2C SDA |
+| VCC | Pin 1 | 3.3V tápfeszültség |
+| GND | Pin 6 | Föld |
+
+### Motor vezérlők — 2× DRV8833
+
+**DRV8833 #1** — FL (bal első) + FR (jobb első) motorok:
+
+| DRV8833 pin | Jetson 40-pin | BCM | Funkció |
+|-------------|--------------|-----|---------|
+| AIN1 | Pin 29 | BCM 5 | Motor FL IN1 |
+| AIN2 | Pin 31 | BCM 6 | Motor FL IN2 |
+| BIN1 | Pin 33 | BCM 13 | Motor FR IN1 |
+| BIN2 | Pin 35 | BCM 19 | Motor FR IN2 |
+| VCC (logic) | Pin 2 | — | 5V logika |
+| GND | Pin 14 | — | Föld |
+| VM (motor) | saját akkumulátor | — | Motor tápfeszültség |
+| STBY | VCC-re húzva | — | Mindig aktív |
+
+**DRV8833 #2** — RL (bal hátsó) + RR (jobb hátsó) motorok:
+
+| DRV8833 pin | Jetson 40-pin | BCM | Funkció |
+|-------------|--------------|-----|---------|
+| AIN1 | Pin 37 | BCM 26 | Motor RL IN1 |
+| AIN2 | Pin 18 | BCM 24 | Motor RL IN2 |
+| BIN1 | Pin 22 | BCM 25 | Motor RR IN1 |
+| BIN2 | Pin 24 | BCM 8 | Motor RR IN2 |
+| VCC (logic) | Pin 4 | — | 5V logika |
+| GND | Pin 20 | — | Föld |
+| VM (motor) | saját akkumulátor | — | Motor tápfeszültség |
+| STBY | VCC-re húzva | — | Mindig aktív |
+
+> **Figyelem:** A DRV8833 VM (motor tápfeszültség) a saját akkumulátorról érkezzen,
+> ne a Jetson 5V lábáról — a motorok indítási árama mehet ezren mA felett.
+
+### IR LED — SFH4546 (USB-UART adapter)
+
+Az E22 LoRa már foglalja a ttyTHS1-et (a 40-pin fejléc egyetlen hardver UART-ja).
+Az IR adóhoz USB-UART adapter szükséges:
+
+| IR áramkör | Kapcsolat | |
+|-----------|----------|--|
+| USB-UART TX | → tranzisztor bázis | 38400 baud, CARRIER_UART mód |
+| SFH4546 | → tranzisztor kollektor | IR LED |
+| GND | közös föld | |
+
+```
+settings.py: IR_UART_PORT = "/dev/ttyUSB0"
+             IR_MODE      = "CARRIER_UART"
+             IR_ENABLED   = False  ← True-ra állítani bekötés után
+```
+
+> Alternatíva: Pin 32 (BCM 12, Hardware PWM0) tartalékként megjelölve —
+> ha a PWM-alapú IR módot választjátok, a vivőfrekvencia (38kHz) innen jöhet.
 
 ---
 
