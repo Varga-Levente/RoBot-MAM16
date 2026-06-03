@@ -11,6 +11,7 @@ Megjelenített információk (4 sor):
 
 import asyncio
 import logging
+import time
 
 import settings
 
@@ -18,13 +19,17 @@ log = logging.getLogger("oled")
 
 
 class OLEDDisplay:
+    _REINIT_INTERVAL = 3.0  # másodpercenként max egyszer próbál újrainicializálni
+
     def __init__(self):
-        self._device = None
+        self._device          = None
+        self._last_init_try   = 0.0
 
     def _init_hardware(self) -> bool:
         if settings.DRY_RUN:
             log.info("[DRY-RUN] OLED szimulálva")
             return True
+        self._last_init_try = time.monotonic()
         try:
             from luma.core.interface.serial import i2c
             from luma.oled.device import ssd1306
@@ -39,12 +44,14 @@ class OLEDDisplay:
             log.info(f"OLED inicializálva: I2C bus={settings.OLED_I2C_BUS} addr=0x{settings.OLED_I2C_ADDRESS:02X}")
             return True
         except Exception as e:
-            log.error(f"OLED inicializálási hiba: {e}")
+            log.debug(f"OLED inicializálási hiba: {e}")
+            self._device = None
             return False
 
     def _render(self, state) -> None:
         if settings.DRY_RUN or self._device is None:
             return
+        # I2C hiba esetén nullázza az eszközt → update_loop újrainicializál
 
         from luma.core.render import canvas
         from PIL import ImageFont
@@ -60,7 +67,12 @@ class OLEDDisplay:
         battery   = f"{state.battery_voltage:.1f}V" if state.battery_voltage > 0 else "---"
         lora_icon = "*" if state.lora_connected else "x"
 
-        with canvas(self._device) as draw:
+        try:
+          canvas_ctx = canvas(self._device)
+        except Exception:
+            self._device = None
+            return
+        with canvas_ctx as draw:
             # Sor 1: név + szerep + LoRa
             draw.text((0,  0), f"{settings.ROBOT_NAME} [{role_icon}] {lora_icon}", fill="white", font=font)
             # Sor 2: IP cím
@@ -69,18 +81,20 @@ class OLEDDisplay:
             draw.text((0, 22), f"Kod: {gate_code}", fill="white", font=font)
 
     async def update_loop(self, state) -> None:
-        if not self._init_hardware():
-            log.warning("OLED nem elérhető, kijelző hurok kimarad")
-            while True:
-                await asyncio.sleep(10)
-
-        log.info("OLED frissítő hurok elindult")
+        log.info("OLED frissítő hurok elindult (hot-plug támogatással)")
         interval = 1.0 / settings.OLED_UPDATE_HZ
         while True:
+            # Ha nincs eszköz, időnként újrainicializál (visszadugás kezelt)
+            if self._device is None and not settings.DRY_RUN:
+                if time.monotonic() - self._last_init_try >= self._REINIT_INTERVAL:
+                    if self._init_hardware():
+                        log.info("OLED újracsatlakozva")
+
             try:
                 await asyncio.get_event_loop().run_in_executor(None, self._render, state)
             except Exception as e:
-                log.error(f"OLED render hiba: {e}")
+                log.debug(f"OLED render hiba: {e}")
+                self._device = None  # következő ciklusban újrainicializál
             await asyncio.sleep(interval)
 
     def clear(self) -> None:
