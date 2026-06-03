@@ -24,12 +24,12 @@ import time
 CHANNEL  = 18     # 850.125 + 18 = 868.125 MHz
 
 # REG0 (03H): UART baud + parity + air data rate
-#   bits 7,6,5 = 110 → 57600 baud  (9600 baud elég lassú: 113 byte = 117ms > 50ms @ 20Hz)
+#   bits 7,6,5 = 111 → 115200 baud
 #   bits 4,3   = 00  → 8N1
-#   bits 2,1,0 = 111 → 62.5kbps
+#   bits 2,1,0 = 111 → 62.5kbps air rate
 # Megjegyzés: konfigurációs módban az E22 mindig 9600 baud-on kommunikál!
-# A 57600 csak normál (transparent) módban lesz aktív.
-REG0_TARGET = 0xC7
+# A 115200 csak normál (transparent) módban lesz aktív.
+REG0_TARGET = 0xE7
 
 # REG1 (04H): sub-packet + RSSI noise + TX power
 #   bits 7,6 = 00 → 240B sub-packet (largest)
@@ -154,7 +154,7 @@ else:
 
 print(f"\nÚj konfig írása (C0 00 09 ...):")
 print(f"  ADDH=0x00 ADDL=0x00 NETID=0x00")
-print(f"  REG0=0x{REG0_TARGET:02X} → 57600 baud, 8N1, 62.5kbps air rate")
+print(f"  REG0=0x{REG0_TARGET:02X} → 115200 baud, 8N1, 62.5kbps air rate")
 print(f"  REG1=0x{REG1_TARGET:02X} → 240B sub-packet, 22dBm TX power")
 print(f"  CH  =0x{CHANNEL:02X} ({850.125 + CHANNEL:.3f} MHz)")
 print(f"  REG3=0x00 CRYPT_H=0x00 CRYPT_L=0x00")
@@ -195,8 +195,7 @@ if len(verify) >= 12:
     print(f"  REG1: {'OK' if ok_reg1 else 'HIBA'} (várt=0x{REG1_TARGET:02X}, kapott=0x{reg1_got:02X})")
     print(f"  CH:   {'OK' if ok_ch else 'HIBA'} (várt={CHANNEL}, kapott={ch_got})")
     if ok_reg0 and ok_reg1 and ok_ch:
-        print(f"\n  ✓ Konfiguráció sikeres! Air rate: 62.5kbps, TX: 22dBm, CH: {CHANNEL}")
-        print(f"  Most beállíthatod a BotController/settings.py-ban: CTRL_SEND_HZ = 20")
+        print(f"\n  ✓ Konfiguráció sikeres! UART: 115200 baud, Air rate: 62.5kbps, TX: 22dBm, CH: {CHANNEL}")
     else:
         print(f"\n  ✗ Konfiguráció sikertelen — módosítások nem léptek életbe")
 elif verify:
