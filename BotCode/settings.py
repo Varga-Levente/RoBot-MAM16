@@ -66,6 +66,7 @@ VISION_COOLDOWN_MS       = 500   # Sikeres kódolvasás után ennyi ms-ig nem in
 #   DIRECT_UART  — 1200 baud UART, külső hardver (555 IC vagy HW PWM) biztosítja a 38kHz-t
 #   CARRIER_UART — 38400 baud UART, szoftver carrier: 0xAA=burst, 0x00=csend (nincs extra hw)
 #   HW_PWM       — 1200 baud UART + Jetson Nano hardware PWM 38kHz vivő (IR_PWM_PIN-en)
+IR_ENABLED         = False           # False = IR adó letiltva (bekötésig)
 IR_MODE            = "CARRIER_UART"
 
 IR_UART_PORT       = "/dev/ttyTHS1"  # Jetson Nano hardware UART port
@@ -91,7 +92,7 @@ IR_PWM_PIN         = 32              # Jetson Nano hardware PWM pin (BCM); -1 = 
 # Frekvencia: 850.125 + LORA_CHANNEL MHz  (pl. csatorna 18 → 868.125 MHz)
 
 LORA_UART_PORT = "/dev/ttyTHS1"  # Jetson Nano UART port (40-pin header pin 8/10)
-LORA_UART_BAUD = 9600            # Alapértelmezett UART baudrate
+LORA_UART_BAUD = 57600           # 57600 baud — 20Hz @ 113 byte/packet igényel ~20ms/csomag
 
 # GPIO pin kiosztás (BCM számozás) — M0/M1: mód vezérlés, AUX: kész jelző
 LORA_M0_PIN  = 20               # M0=LOW + M1=LOW → normál/transparent mód
@@ -117,12 +118,12 @@ MOTOR_FL_IN2 = 6
 # Jobb első motor (Front Right)
 MOTOR_FR_IN1 = 13
 MOTOR_FR_IN2 = 19
-# Bal hátsó motor (Rear Left)
+# Bal hátsó motor (Rear Left)  — BCM20 LoRa M0, helyette BCM26+BCM24
 MOTOR_RL_IN1 = 26
-MOTOR_RL_IN2 = 20
-# Jobb hátsó motor (Rear Right)
-MOTOR_RR_IN1 = 21
-MOTOR_RR_IN2 = 16
+MOTOR_RL_IN2 = 24
+# Jobb hátsó motor (Rear Right) — BCM21=LoRa M1, BCM16=LoRa AUX, helyette BCM25+BCM8
+MOTOR_RR_IN1 = 25
+MOTOR_RR_IN2 = 8
 
 MOTOR_PWM_FREQ_HZ  = 1000   # PWM frekvencia Hz-ben
 MOTOR_MAX_SPEED    = 1.0    # Maximális sebesség (0.0–1.0 normalizált)

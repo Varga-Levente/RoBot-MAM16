@@ -126,6 +126,11 @@ class IRTransmitter:
 
     async def transmit_loop(self, gate_code_queue: asyncio.Queue, state) -> None:
         """Főhurok: vár a gate_code_queue-ra és elküldi a kódot IR-en."""
+        if not getattr(settings, "IR_ENABLED", True):
+            log.info("IR adó letiltva (IR_ENABLED=False) — hurok kihagyva")
+            while True:
+                await gate_code_queue.get()  # queue-t ürítjük, hogy ne telítődjön
+            return
         self._open_serial()
         log.info("IR adó hurok elindult")
         while True:

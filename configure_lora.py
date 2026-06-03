@@ -24,10 +24,12 @@ import time
 CHANNEL  = 18     # 850.125 + 18 = 868.125 MHz
 
 # REG0 (03H): UART baud + parity + air data rate
-#   bits 7,6,5 = 011 → 9600 baud
+#   bits 7,6,5 = 110 → 57600 baud  (9600 baud elég lassú: 113 byte = 117ms > 50ms @ 20Hz)
 #   bits 4,3   = 00  → 8N1
 #   bits 2,1,0 = 111 → 62.5kbps
-REG0_TARGET = 0x67
+# Megjegyzés: konfigurációs módban az E22 mindig 9600 baud-on kommunikál!
+# A 57600 csak normál (transparent) módban lesz aktív.
+REG0_TARGET = 0xC7
 
 # REG1 (04H): sub-packet + RSSI noise + TX power
 #   bits 7,6 = 00 → 240B sub-packet (largest)
@@ -133,8 +135,8 @@ if len(resp) >= 12:
     reg3   = resp[9]
     baud_idx  = (reg0 >> 5) & 0x07
     air_idx   = reg0 & 0x07
-    air_rates = ["0.3k","1.2k","2.4k","4.8k","9.6k","19.2k","38.4k","62.5k"]
-    baud_rates = [1200,2400,4800,9600,19200,38400,57600,115200]
+    air_rates  = ["0.3k","1.2k","2.4k","4.8k","9.6k","19.2k","38.4k","62.5k"]
+    baud_rates = [1200, 2400, 4800, 9600, 19200, 38400, 57600, 115200]
     print(f"  ADDR:  0x{addh:02X}{addl:02X}  NETID: 0x{netid:02X}")
     print(f"  REG0:  0x{reg0:02X}  → UART {baud_rates[baud_idx]}bps, air {air_rates[air_idx]}")
     print(f"  REG1:  0x{reg1:02X}  CH: {ch} ({850.125+ch:.3f} MHz)")
@@ -152,7 +154,7 @@ else:
 
 print(f"\nÚj konfig írása (C0 00 09 ...):")
 print(f"  ADDH=0x00 ADDL=0x00 NETID=0x00")
-print(f"  REG0=0x{REG0_TARGET:02X} → 9600 baud, 8N1, 62.5kbps air rate")
+print(f"  REG0=0x{REG0_TARGET:02X} → 57600 baud, 8N1, 62.5kbps air rate")
 print(f"  REG1=0x{REG1_TARGET:02X} → 240B sub-packet, 22dBm TX power")
 print(f"  CH  =0x{CHANNEL:02X} ({850.125 + CHANNEL:.3f} MHz)")
 print(f"  REG3=0x00 CRYPT_H=0x00 CRYPT_L=0x00")
