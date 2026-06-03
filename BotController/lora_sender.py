@@ -28,7 +28,7 @@ import settings
 
 log = logging.getLogger("lora")
 
-_MAGIC = b'\xAA\x55'
+_MAGIC = b'\xAA\x55\x5A\xA5'  # 4 bájt — megakadályozza a hamis detektálást AES-CTR outputban
 
 try:
     from Crypto.Cipher import AES
@@ -127,6 +127,7 @@ class LoraSender:
                 baudrate=settings.LORA_UART_BAUD,
                 bytesize=8, parity='N', stopbits=1,
                 timeout=0.1,
+                rtscts=False, dsrdtr=False,
             )
             self._ser.reset_input_buffer()
             freq = 850.125 + settings.LORA_CHANNEL
@@ -248,22 +249,25 @@ class LoraSender:
 
     def send_command(self, linear: float, angular: float,
                      lateral: float = 0.0, left_y: float = 0.0) -> bool:
-        payload = json.dumps({
+        cmd = {
             "cmd":     "move",
             "linear":  round(linear,  4),
             "angular": round(angular, 4),
             "lateral": round(lateral, 4),
             "left_y":  round(left_y,  4),
-        }).encode()
+        }
+        payload = json.dumps(cmd).encode()
+        log.debug(f"LoRa TX JSON: {json.dumps(cmd)}")
         return self._send_raw(self._encrypt(payload))
 
     def send_jump(self, direction: str, duration: float = 1.0) -> bool:
-        payload = json.dumps({
-            "cmd": "jump", "direction": direction, "duration": round(duration, 2)
-        }).encode()
+        cmd = {"cmd": "jump", "direction": direction, "duration": round(duration, 2)}
+        payload = json.dumps(cmd).encode()
+        log.debug(f"LoRa TX JSON: {json.dumps(cmd)}")
         return self._send_raw(self._encrypt(payload))
 
     def send_stop(self) -> bool:
+        log.debug('LoRa TX JSON: {"cmd":"stop"}')
         return self._send_raw(self._encrypt(b'{"cmd":"stop"}'))
 
     def close(self) -> None:

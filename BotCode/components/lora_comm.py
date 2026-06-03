@@ -30,7 +30,7 @@ import settings
 
 log = logging.getLogger("lora")
 
-_MAGIC = b'\xAA\x55'
+_MAGIC = b'\xAA\x55\x5A\xA5'  # 4 bájt — megakadályozza a hamis detektálást AES-CTR outputban
 
 try:
     import serial as _serial_mod
@@ -251,10 +251,10 @@ class LoRaComm:
 
             try:
                 cmd = json.loads(plaintext.decode("utf-8"))
+                log.debug(f"LoRa RX JSON: {json.dumps(cmd, ensure_ascii=False)}")
                 await command_queue.put(cmd)
-                log.debug(f"LoRa parancs: {cmd}")
             except Exception as e:
-                log.warning(f"LoRa parse hiba: {e}")
+                log.warning(f"LoRa parse hiba: {e} | raw={plaintext[:64]}")
 
     async def send(self, data: dict) -> None:
         payload   = json.dumps(data).encode("utf-8")
