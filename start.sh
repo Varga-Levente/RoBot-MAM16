@@ -1,8 +1,22 @@
 #!/bin/bash
-# MAM16 Robot indítópult
+# MAM16 Robot indítópult — Jetson Nano (BotCode)
+# Pi-n a távirányítót indítsd: BotController/start.sh
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 BOTCODE="$SCRIPT_DIR/BotCode"
+
+# Platform ellenőrzés — csak Jetson Nano-n futtatandó
+if [ -f /proc/device-tree/model ]; then
+    MODEL=$(cat /proc/device-tree/model 2>/dev/null)
+    if echo "$MODEL" | grep -qi "Raspberry"; then
+        echo ""
+        echo "  Ez a launcher a Jetson Nano robotnak szól."
+        echo "  Pi-n a távirányítót indítsd:"
+        echo "    ./BotController/start.sh"
+        echo ""
+        exit 1
+    fi
+fi
 
 if [ -f "$BOTCODE/venv/bin/python" ]; then
     PY="$BOTCODE/venv/bin/python"
