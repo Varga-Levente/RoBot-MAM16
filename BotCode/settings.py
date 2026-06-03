@@ -92,7 +92,7 @@ IR_PWM_PIN         = 32              # Jetson Nano hardware PWM pin (BCM); -1 = 
 # Frekvencia: 850.125 + LORA_CHANNEL MHz  (pl. csatorna 18 → 868.125 MHz)
 
 LORA_UART_PORT = "/dev/ttyTHS1"  # Jetson Nano UART port (40-pin header pin 8/10)
-LORA_UART_BAUD = 57600           # 57600 baud — 20Hz @ 113 byte/packet igényel ~20ms/csomag
+LORA_UART_BAUD = 115200          # 115200 baud — 127 byte/packet ~11ms UART átvitel
 
 # GPIO pin kiosztás (BCM számozás) — M0/M1: mód vezérlés, AUX: kész jelző
 LORA_M0_PIN  = 20               # M0=LOW + M1=LOW → normál/transparent mód
