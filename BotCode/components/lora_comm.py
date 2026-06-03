@@ -197,31 +197,49 @@ class LoRaComm:
         if settings.DRY_RUN or self._ser is None:
             return None
         deadline = time.monotonic() + timeout
+
         while time.monotonic() < deadline:
-            # Read all available bytes
-            waiting = self._ser.in_waiting
-            if waiting:
-                self._rx_buf.extend(self._ser.read(waiting))
+            # Phase 1: accumulate until we have the 6-byte header
+            while len(self._rx_buf) < 6 and time.monotonic() < deadline:
+                chunk = self._ser.read(6 - len(self._rx_buf))
+                if chunk:
+                    self._rx_buf.extend(chunk)
 
-            # If we have at least a header, determine expected frame size
-            # and wait until the full frame has arrived before unframing
+            # Find magic; discard noise before it
             idx = self._rx_buf.find(_MAGIC)
-            if idx >= 0 and len(self._rx_buf) >= idx + 6:
-                n = (self._rx_buf[idx + 4] << 8) | self._rx_buf[idx + 5]
-                needed = idx + 6 + n
-                # Drain until complete frame present
-                while len(self._rx_buf) < needed and time.monotonic() < deadline:
-                    w = self._ser.in_waiting
-                    if w:
-                        self._rx_buf.extend(self._ser.read(w))
-                    else:
-                        time.sleep(0.001)
+            if idx < 0:
+                del self._rx_buf[:-3]
+                continue
+            if idx > 0:
+                del self._rx_buf[:idx]
 
-            payload = _unframe(self._rx_buf)
-            if payload is not None:
-                log.debug(f"RX frame OK: {len(payload)}B payload")
-                return payload
-            time.sleep(0.005)
+            if len(self._rx_buf) < 6:
+                continue
+
+            n = (self._rx_buf[4] << 8) | self._rx_buf[5]
+            if n > 512:          # sanity guard against corrupt length
+                del self._rx_buf[:1]
+                continue
+
+            needed = 6 + n
+
+            # Phase 2: read EXACTLY the remaining payload bytes.
+            # serial.read(k) returns at most k bytes (FIFO), so we never
+            # overshoot into the next frame even if it has already arrived.
+            while len(self._rx_buf) < needed and time.monotonic() < deadline:
+                to_read = needed - len(self._rx_buf)
+                chunk = self._ser.read(to_read)
+                if chunk:
+                    self._rx_buf.extend(chunk)
+
+            if len(self._rx_buf) < needed:
+                return None   # timeout before full frame
+
+            payload = bytes(self._rx_buf[6:needed])
+            del self._rx_buf[:needed]
+            log.debug(f"RX frame OK: {len(payload)}B payload")
+            return payload
+
         return None
 
     # ── Handshake ─────────────────────────────────────────────────────────────

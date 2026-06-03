@@ -203,26 +203,42 @@ class LoraSender:
         if not _SERIAL_OK or self._ser is None:
             return None
         deadline = time.monotonic() + timeout
+
         while time.monotonic() < deadline:
-            waiting = self._ser.in_waiting
-            if waiting:
-                self._rx_buf.extend(self._ser.read(waiting))
+            while len(self._rx_buf) < 6 and time.monotonic() < deadline:
+                chunk = self._ser.read(6 - len(self._rx_buf))
+                if chunk:
+                    self._rx_buf.extend(chunk)
 
             idx = self._rx_buf.find(_MAGIC)
-            if idx >= 0 and len(self._rx_buf) >= idx + 6:
-                n = (self._rx_buf[idx + 4] << 8) | self._rx_buf[idx + 5]
-                needed = idx + 6 + n
-                while len(self._rx_buf) < needed and time.monotonic() < deadline:
-                    w = self._ser.in_waiting
-                    if w:
-                        self._rx_buf.extend(self._ser.read(w))
-                    else:
-                        time.sleep(0.001)
+            if idx < 0:
+                del self._rx_buf[:-3]
+                continue
+            if idx > 0:
+                del self._rx_buf[:idx]
 
-            payload = _unframe(self._rx_buf)
-            if payload is not None:
-                return payload
-            time.sleep(0.005)
+            if len(self._rx_buf) < 6:
+                continue
+
+            n = (self._rx_buf[4] << 8) | self._rx_buf[5]
+            if n > 512:
+                del self._rx_buf[:1]
+                continue
+
+            needed = 6 + n
+            while len(self._rx_buf) < needed and time.monotonic() < deadline:
+                to_read = needed - len(self._rx_buf)
+                chunk = self._ser.read(to_read)
+                if chunk:
+                    self._rx_buf.extend(chunk)
+
+            if len(self._rx_buf) < needed:
+                return None
+
+            payload = bytes(self._rx_buf[6:needed])
+            del self._rx_buf[:needed]
+            return payload
+
         return None
 
     # ── Handshake ─────────────────────────────────────────────────────────────
