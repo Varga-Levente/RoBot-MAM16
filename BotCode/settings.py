@@ -162,7 +162,7 @@ TEST_UI_PORT       = 8081  # Teszt UI port (--test-ui flag esetén)
 # ── LOGGING ───────────────────────────────────────────────────────────────────
 # Naplózás fájlba és a web UI-ba (SSE)
 
-LOG_LEVEL        = "INFO"          # DEBUG | INFO | WARNING | ERROR | CRITICAL
+LOG_LEVEL        = "DEBUG"         # DEBUG | INFO | WARNING | ERROR | CRITICAL
 LOG_FILE         = "robot.log"     # Naplófájl neve (üres = nincs fájlba írás)
 LOG_MAX_BYTES    = 5 * 1024 * 1024 # Maximális naplófájl méret (5 MB)
 LOG_BACKUP_COUNT = 3               # Régi naplófájlok száma amit megőriz

@@ -89,7 +89,9 @@ def _encrypt(plaintext: bytes) -> bytes:
 def _decrypt(data: bytes) -> Optional[bytes]:
     from Crypto.Cipher import AES
     from Crypto.Hash import HMAC, SHA256
-    if len(data) < 4 + 8 + 1 + 32:
+    min_size = 4 + 8 + 1 + 32
+    if len(data) < min_size:
+        log.debug(f"Túl rövid csomag: {len(data)} byte (min {min_size})")
         return None
     if data[:4] != settings.LORA_DEVICE_ID:
         log.debug(f"Ismeretlen device_id: {data[:4].hex()} — eldobva")
@@ -100,7 +102,8 @@ def _decrypt(data: bytes) -> Optional[bytes]:
     expected = HMAC.new(settings.LORA_HMAC_KEY,
                         settings.LORA_DEVICE_ID + nonce + ct, SHA256).digest()
     if expected != mac_recv:
-        log.warning("HMAC ellenőrzés sikertelen — csomag eldobva")
+        log.warning(f"HMAC hiba: {len(data)} byte, ct={len(ct)}B, "
+                    f"első 8B: {data[:8].hex()}, utolsó 8B: {data[-8:].hex()}")
         return None
     return AES.new(settings.LORA_AES_KEY, AES.MODE_CTR, nonce=nonce).decrypt(ct)
 
@@ -181,9 +184,13 @@ class LoRaComm:
         deadline = time.monotonic() + timeout
         while time.monotonic() < deadline:
             if self._ser.in_waiting:
-                self._rx_buf.extend(self._ser.read(self._ser.in_waiting))
+                chunk = self._ser.read(self._ser.in_waiting)
+                self._rx_buf.extend(chunk)
+                log.debug(f"RX chunk {len(chunk)}B, buf={len(self._rx_buf)}B, "
+                          f"első 4B: {bytes(self._rx_buf[:4]).hex()}")
             payload = _unframe(self._rx_buf)
             if payload is not None:
+                log.debug(f"RX frame OK: {len(payload)}B payload")
                 return payload
             time.sleep(0.01)
         return None

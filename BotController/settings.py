@@ -44,4 +44,4 @@ WEB_PORT = 8081              # böngészőben: http://<pi-ip>:8081
 
 # ── LOGGING ───────────────────────────────────────────────────────────────────
 
-LOG_LEVEL = "INFO"           # DEBUG | INFO | WARNING | ERROR
+LOG_LEVEL = "DEBUG"          # DEBUG | INFO | WARNING | ERROR

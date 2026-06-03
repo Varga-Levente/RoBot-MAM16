@@ -177,10 +177,17 @@ class LoraSender:
         if not _SERIAL_OK or self._ser is None:
             return False
         try:
+            framed = _frame(data)
+            out_waiting = getattr(self._ser, 'out_waiting', 0)
+            if out_waiting > 0:
+                log.debug(f"TX UART buffer telített: {out_waiting} byte vár — csomag eldobva")
+                return False
+            t0 = time.monotonic()
             self._wait_aux()
-            self._ser.write(_frame(data))
+            self._ser.write(framed)
             self._ser.flush()
-            self._wait_aux()
+            elapsed = (time.monotonic() - t0) * 1000
+            log.debug(f"TX {len(framed)} byte (payload={len(data)}) flush={elapsed:.1f}ms baud={settings.LORA_UART_BAUD}")
             return True
         except Exception as e:
             log.error(f"LoRa küldési hiba: {e}")
