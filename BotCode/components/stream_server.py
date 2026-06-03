@@ -191,7 +191,7 @@ class StreamServer:
         app.router.add_get("/state",        self._state_handler)
         app.router.add_post("/api/debug",   self._debug_handler)
 
-        runner = web.AppRunner(app)
+        runner = web.AppRunner(app, access_log=None)
         await runner.setup()
         site = web.TCPSite(runner, settings.STREAM_HOST, settings.STREAM_PORT)
         await site.start()
@@ -212,7 +212,7 @@ class StreamServer:
             test_app.router.add_post("/test/api/motor/set",      self._test_motor_set)
             test_app.router.add_post("/test/api/motor/stop",     self._test_motor_stop)
 
-            test_runner = web.AppRunner(test_app)
+            test_runner = web.AppRunner(test_app, access_log=None)
             await test_runner.setup()
             test_site = web.TCPSite(test_runner, settings.STREAM_HOST, settings.TEST_UI_PORT)
             await test_site.start()

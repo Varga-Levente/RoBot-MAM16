@@ -153,7 +153,7 @@ class ControllerWebServer:
         })
 
     async def serve(self) -> None:
-        runner = web.AppRunner(self._app)
+        runner = web.AppRunner(self._app, access_log=None)
         await runner.setup()
         site = web.TCPSite(runner, settings.WEB_HOST, settings.WEB_PORT)
         await site.start()
