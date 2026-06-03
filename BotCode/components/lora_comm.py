@@ -4,19 +4,20 @@ LoRa kommunikációs modul — EBYTE E22-900T22D-V2 UART alapú.
 Keret formátum (alkalmazás réteg, packet határokon átnyúló adatokhoz):
   [0xAA][0x55][len_hi][len_lo][payload]
 
-Titkosítás (változatlan):
+Titkosítás:
   AES-128 CTR mód + HMAC-SHA256 hitelesítés
   Csomag: [device_id:4B][nonce:8B][ciphertext][HMAC:32B]
 
-Handshake (változatlan):
+Handshake:
   Robot → 32 bájt nonce → Controller
   Controller → HMAC-SHA256(nonce, hmac_key) → Robot
   Robot → encrypted {"status":"ok"} → Controller
 
-GPIO (Jetson.GPIO, BCM számozás):
+GPIO (opcionális, settings.LORA_USE_GPIO = True esetén):
   LORA_M0_PIN  = kimenet, LOW normál módhoz
   LORA_M1_PIN  = kimenet, LOW normál módhoz
   LORA_AUX_PIN = bemenet, HIGH = modul szabad
+  Ha LORA_USE_GPIO = False: csak TX/RX/GND/VCC bekötve, GPIO nem használt.
 """
 
 import asyncio
@@ -46,12 +47,13 @@ except ImportError:
     _SERIAL_OK = False
     log.warning("pyserial nem elérhető")
 
-try:
-    import Jetson.GPIO as GPIO
-    _GPIO_OK = True
-except ImportError:
-    _GPIO_OK = False
-    log.warning("Jetson.GPIO nem elérhető — AUX/M0/M1 szimulálva")
+_GPIO_OK = False
+if getattr(settings, 'LORA_USE_GPIO', False):
+    try:
+        import Jetson.GPIO as GPIO
+        _GPIO_OK = True
+    except ImportError:
+        log.warning("Jetson.GPIO nem elérhető — AUX/M0/M1 szimulálva")
 
 
 # ── Keretezés ─────────────────────────────────────────────────────────────────

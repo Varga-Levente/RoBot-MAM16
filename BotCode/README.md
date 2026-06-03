@@ -38,32 +38,36 @@ Minden komponens egy önálló asyncio task, queue-kon kommunikálnak egymással
 
 ### GPIO kiosztás (BCM számozás)
 
-| Funkció | GPIO pin |
-|---------|---------|
-| Motor FL IN1 | 5 |
-| Motor FL IN2 | 6 |
-| Motor FR IN1 | 13 |
-| Motor FR IN2 | 19 |
-| Motor RL IN1 | 26 |
-| Motor RL IN2 | 20 |
-| Motor RR IN1 | 21 |
-| Motor RR IN2 | 16 |
-| LoRa M0 | 20 |
-| LoRa M1 | 21 |
-| LoRa AUX | 16 |
+| Funkció | BCM GPIO | 40-pin fizikai |
+|---------|---------|----------------|
+| Motor FL IN1 | 5 | 29 |
+| Motor FL IN2 | 6 | 31 |
+| Motor FR IN1 | 13 | 33 |
+| Motor FR IN2 | 19 | 35 |
+| Motor RL IN1 | 26 | 37 |
+| Motor RL IN2 | 24 | 18 |
+| Motor RR IN1 | 25 | 22 |
+| Motor RR IN2 | 8 | 24 |
 
-### I2C / SPI / UART
+### LoRa E22-900T22D-V2 bekötés (UART — Jetson 40-pin header)
 
-| Eszköz | Protokoll | Bus | Cím / CS |
-|--------|-----------|-----|---------|
-| SSD1306 OLED | I2C | Bus 1 | 0x3C |
-| E22-900T22D-V2 LoRa | UART | /dev/ttyTHS2 | — |
+| E22 pin | Jetson 40-pin | Funkció |
+|---------|--------------|---------|
+| TX | Pin 10 (RX / ttyTHS1) | UART fogadás |
+| RX | Pin 8 (TX / ttyTHS1) | UART küldés |
+| GND | Pin 6 (GND) | Föld |
+| VCC | Pin 1 (3.3V) | Tápfeszültség |
 
-### Soros port
+> M0/M1/AUX **nem csatlakoztatva** — az E22 flash-be mentett konfigurációja
+> biztosítja a normál (transparent) módot. `settings.py`: `LORA_USE_GPIO = False`.
 
-| Funkció | Port |
-|---------|------|
-| IR LED (UART) | `/dev/ttyTHS1` |
+### I2C / UART
+
+| Eszköz | Protokoll | Port / Bus | Cím |
+|--------|-----------|-----------|-----|
+| SSD1306 OLED | I2C | Bus 1 (Pin 3/5) | 0x3C |
+| E22-900T22D-V2 LoRa | UART | `/dev/ttyTHS1` (Pin 8/10) | — |
+| IR LED | UART | `/dev/ttyTHS2` | — |
 
 ---
 
@@ -115,10 +119,8 @@ A `settings.py` fájl szekciókra bontva tartalmaz minden paramétert.
 ROBOT_NAME = "MAM16"
 ROBOT_ROLE = "PACMAN"   # vagy "GHOST"
 
-LORA_UART_PORT = "/dev/ttyTHS2"  # Jetson Nano UART port
-LORA_M0_PIN    = 20              # BCM GPIO
-LORA_M1_PIN    = 21              # BCM GPIO
-LORA_AUX_PIN   = 16             # BCM GPIO
+LORA_UART_PORT = "/dev/ttyTHS1"  # Jetson Nano UART port (pin 8/10)
+LORA_USE_GPIO  = False           # Csak TX/RX/GND/VCC kötve — M0/M1/AUX nincs
 LORA_CHANNEL   = 18             # csatorna (868.125 MHz)
 LORA_TX_POWER  = 22             # dBm
 LORA_DEVICE_ID = b"\xDE\xAD\xBE\xEF"
@@ -313,10 +315,10 @@ gst-launch-1.0 nvarguscamerasrc ! nvvidconv ! xvimagesink
 ### LoRa nem kommunikál
 ```bash
 # UART ellenőrzése
-ls -la /dev/ttyTHS2
-python3.8 -c "import serial; s=serial.Serial('/dev/ttyTHS2', 9600); print('OK')"
-# GPIO jogosultság
-sudo usermod -a -G gpio $USER
+ls -la /dev/ttyTHS1
+python3.8 -c "import serial; s=serial.Serial('/dev/ttyTHS1', 115200); print('OK')"
+# Jogosultság
+sudo usermod -a -G dialout $USER
 ```
 
 ### WebRTC stream nem jelenik meg a böngészőben

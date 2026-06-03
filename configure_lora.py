@@ -52,6 +52,8 @@ if args.pi:
     M0_PIN, M1_PIN, AUX_PIN = 20, 21, 16   # BCM számok
     import RPi.GPIO as GPIO
 else:
+    # Jetson: normál üzemeléshez csak TX/RX/GND/VCC kell.
+    # Konfiguráláshoz ideiglenesen kösd be: M0→pin38, M1→pin40, AUX→pin36
     UART_PORT = "/dev/ttyTHS1"
     GPIO_MODE = "BOARD"
     M0_PIN, M1_PIN, AUX_PIN = 38, 40, 36   # Fizikai pin számok (BOARD mód)
