@@ -33,6 +33,13 @@ log = logging.getLogger("lora")
 _MAGIC = b'\xAA\x55\x5A\xA5'  # 4 bájt — megakadályozza a hamis detektálást AES-CTR outputban
 
 try:
+    from Crypto.Hash import HMAC as _HMAC_TEST, SHA256 as _SHA256_TEST
+    _test_mac = _HMAC_TEST.new(settings.LORA_HMAC_KEY, b"lora_key_check", _SHA256_TEST).hexdigest()
+    log.info(f"LoRa kulcs ellenőrzés: hmac_test={_test_mac[:16]}")
+except Exception as _e:
+    log.warning(f"LoRa kulcs ellenőrzés hiba: {_e}")
+
+try:
     import serial as _serial_mod
     _SERIAL_OK = True
 except ImportError:
@@ -102,8 +109,16 @@ def _decrypt(data: bytes) -> Optional[bytes]:
     expected = HMAC.new(settings.LORA_HMAC_KEY,
                         settings.LORA_DEVICE_ID + nonce + ct, SHA256).digest()
     if expected != mac_recv:
-        log.warning(f"HMAC hiba: {len(data)} byte, ct={len(ct)}B, "
-                    f"első 8B: {data[:8].hex()}, utolsó 8B: {data[-8:].hex()}")
+        _decrypt._fail_count = getattr(_decrypt, '_fail_count', 0) + 1
+        if _decrypt._fail_count <= 3:
+            log.warning(f"HMAC hiba #{_decrypt._fail_count}: {len(data)}B, ct={len(ct)}B\n"
+                        f"  nonce      : {nonce.hex()}\n"
+                        f"  várt  HMAC : {expected.hex()}\n"
+                        f"  kapott HMAC: {mac_recv.hex()}\n"
+                        f"  teljes hex : {data.hex()}")
+        else:
+            log.warning(f"HMAC hiba: {len(data)} byte, ct={len(ct)}B, "
+                        f"első 8B: {data[:8].hex()}, utolsó 8B: {data[-8:].hex()}")
         return None
     return AES.new(settings.LORA_AES_KEY, AES.MODE_CTR, nonce=nonce).decrypt(ct)
 

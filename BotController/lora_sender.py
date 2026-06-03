@@ -34,6 +34,8 @@ try:
     from Crypto.Cipher import AES
     from Crypto.Hash   import HMAC, SHA256
     _CRYPTO_OK = True
+    _test_mac = HMAC.new(settings.LORA_HMAC_KEY, b"lora_key_check", SHA256).hexdigest()
+    log.info(f"LoRa kulcs ellenőrzés: hmac_test={_test_mac[:16]}")
 except ImportError:
     _CRYPTO_OK = False
     log.warning("pycryptodome nem elérhető")
@@ -188,6 +190,9 @@ class LoraSender:
             self._ser.write(framed)
             self._ser.flush()
             elapsed = (time.monotonic() - t0) * 1000
+            self._tx_count = getattr(self, '_tx_count', 0) + 1
+            if self._tx_count <= 3:
+                log.debug(f"TX #{self._tx_count} payload hex: {data.hex()}")
             log.debug(f"TX {len(framed)} byte (payload={len(data)}) flush={elapsed:.1f}ms baud={settings.LORA_UART_BAUD}")
             return True
         except Exception as e:
