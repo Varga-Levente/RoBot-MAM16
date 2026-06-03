@@ -1,0 +1,21 @@
+[Unit]
+Description=RoBot BotCode — robot szoftver
+After=network.target
+Wants=network.target
+
+[Service]
+Type=simple
+User=jetson
+Group=jetson
+WorkingDirectory=/home/jetson/RoBot-MAM16/BotCode
+ExecStart=/home/jetson/RoBot-MAM16/BotCode/start.sh
+Restart=on-failure
+RestartSec=5
+StandardOutput=journal
+StandardError=journal
+
+# GPIO és UART jogosultság
+SupplementaryGroups=gpio i2c dialout video
+
+[Install]
+WantedBy=multi-user.target

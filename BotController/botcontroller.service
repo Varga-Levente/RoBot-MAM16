@@ -1,0 +1,21 @@
+[Unit]
+Description=RoBot BotController — távirányító szoftver
+After=network.target
+Wants=network.target
+
+[Service]
+Type=simple
+User=sysadmin
+Group=sysadmin
+WorkingDirectory=/home/sysadmin/RoBot-MAM16/BotController
+ExecStart=/home/sysadmin/RoBot-MAM16/BotController/start.sh
+Restart=on-failure
+RestartSec=5
+StandardOutput=journal
+StandardError=journal
+
+# GPIO, UART és gamepad jogosultság
+SupplementaryGroups=gpio dialout input
+
+[Install]
+WantedBy=multi-user.target
