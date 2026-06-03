@@ -210,10 +210,15 @@ class LoRaComm:
 
         self._challenge = os.urandom(32)
         loop = asyncio.get_event_loop()
-        await loop.run_in_executor(None, self._send_raw, self._challenge)
-        log.info("LoRa handshake nonce elküldve, várakozás hitelesítésre...")
+        _last_nonce_tx = 0.0
 
         while True:
+            now = loop.time()
+            if now - _last_nonce_tx >= 5.0:
+                await loop.run_in_executor(None, self._send_raw, self._challenge)
+                log.info("LoRa handshake nonce elküldve, várakozás hitelesítésre...")
+                _last_nonce_tx = now
+
             raw = await loop.run_in_executor(
                 None, lambda: self._recv_raw(timeout=0.5)
             )
