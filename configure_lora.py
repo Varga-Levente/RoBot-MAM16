@@ -93,7 +93,8 @@ def read_all(ser, timeout=2.0):
 
 print(f"Port: {UART_PORT}")
 print("Soros port megnyitása...")
-ser = serial.Serial(UART_PORT, 9600, timeout=2.0)
+# rtscts=False: letiltja a hardware flow control-t (Jetson Pin36=CTS konfliktus elkerülése)
+ser = serial.Serial(UART_PORT, 9600, timeout=2.0, rtscts=False, dsrdtr=False)
 time.sleep(0.2)
 ser.reset_input_buffer()
 

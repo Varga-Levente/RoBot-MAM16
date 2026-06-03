@@ -152,6 +152,7 @@ class LoRaComm:
                 baudrate=settings.LORA_UART_BAUD,
                 bytesize=8, parity='N', stopbits=1,
                 timeout=0.1,
+                rtscts=False, dsrdtr=False,
             )
             self._ser.reset_input_buffer()
             freq = 850.125 + settings.LORA_CHANNEL
