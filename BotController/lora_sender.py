@@ -204,12 +204,25 @@ class LoraSender:
             return None
         deadline = time.monotonic() + timeout
         while time.monotonic() < deadline:
-            if self._ser.in_waiting:
-                self._rx_buf.extend(self._ser.read(self._ser.in_waiting))
+            waiting = self._ser.in_waiting
+            if waiting:
+                self._rx_buf.extend(self._ser.read(waiting))
+
+            idx = self._rx_buf.find(_MAGIC)
+            if idx >= 0 and len(self._rx_buf) >= idx + 6:
+                n = (self._rx_buf[idx + 4] << 8) | self._rx_buf[idx + 5]
+                needed = idx + 6 + n
+                while len(self._rx_buf) < needed and time.monotonic() < deadline:
+                    w = self._ser.in_waiting
+                    if w:
+                        self._rx_buf.extend(self._ser.read(w))
+                    else:
+                        time.sleep(0.001)
+
             payload = _unframe(self._rx_buf)
             if payload is not None:
                 return payload
-            time.sleep(0.01)
+            time.sleep(0.005)
         return None
 
     # ── Handshake ─────────────────────────────────────────────────────────────

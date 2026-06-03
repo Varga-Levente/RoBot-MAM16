@@ -198,16 +198,30 @@ class LoRaComm:
             return None
         deadline = time.monotonic() + timeout
         while time.monotonic() < deadline:
-            if self._ser.in_waiting:
-                chunk = self._ser.read(self._ser.in_waiting)
-                self._rx_buf.extend(chunk)
-                log.debug(f"RX chunk {len(chunk)}B, buf={len(self._rx_buf)}B, "
-                          f"első 4B: {bytes(self._rx_buf[:4]).hex()}")
+            # Read all available bytes
+            waiting = self._ser.in_waiting
+            if waiting:
+                self._rx_buf.extend(self._ser.read(waiting))
+
+            # If we have at least a header, determine expected frame size
+            # and wait until the full frame has arrived before unframing
+            idx = self._rx_buf.find(_MAGIC)
+            if idx >= 0 and len(self._rx_buf) >= idx + 6:
+                n = (self._rx_buf[idx + 4] << 8) | self._rx_buf[idx + 5]
+                needed = idx + 6 + n
+                # Drain until complete frame present
+                while len(self._rx_buf) < needed and time.monotonic() < deadline:
+                    w = self._ser.in_waiting
+                    if w:
+                        self._rx_buf.extend(self._ser.read(w))
+                    else:
+                        time.sleep(0.001)
+
             payload = _unframe(self._rx_buf)
             if payload is not None:
                 log.debug(f"RX frame OK: {len(payload)}B payload")
                 return payload
-            time.sleep(0.01)
+            time.sleep(0.005)
         return None
 
     # ── Handshake ─────────────────────────────────────────────────────────────

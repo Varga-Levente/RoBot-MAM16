@@ -30,7 +30,7 @@ LORA_HMAC_KEY  = b"change_me_hmac_key_32bytes!!"
 
 CTRL_SPEED_LIMIT    = 1.0    # 0.0–1.0: az összes tengely kimenete ezzel szorzódik
 CTRL_DEADZONE       = 0.05   # normalizált holtzona (0.0–1.0 közötti érték alatt = 0)
-CTRL_SEND_HZ        = 20     # parancsküldés frekvenciája (Hz) — E22 @ 62.5kbps: max ~20Hz
+CTRL_SEND_HZ        = 10     # parancsküldés frekvenciája (Hz) — 10Hz ad elég időt az E22-nek
 CTRL_GAMEPAD_DEVICE = ""     # "" = automatikus keresés; vagy pl. "/dev/input/event3"
 CTRL_RECONNECT_SEC  = 3.0    # LoRa handshake újrakísérlet időköze (s)
 CTRL_JUMP_DURATION  = 1.0    # ugrás impulzus hossza (s) — hány másodpercig tart a burst
