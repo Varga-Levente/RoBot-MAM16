@@ -5,10 +5,10 @@ Wants=network.target
 
 [Service]
 Type=simple
-User=sysadmin
-Group=sysadmin
-WorkingDirectory=/home/sysadmin/RoBot-MAM16/BotController
-ExecStart=/home/sysadmin/RoBot-MAM16/BotController/start.sh
+User=pi
+Group=pi
+WorkingDirectory=/home/pi/RoBot-MAM16/BotController
+ExecStart=/home/pi/RoBot-MAM16/BotController/start.sh
 Restart=on-failure
 RestartSec=5
 StandardOutput=journal
