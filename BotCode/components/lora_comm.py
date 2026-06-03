@@ -56,20 +56,20 @@ def _frame(data: bytes) -> bytes:
 
 def _unframe(buf: bytearray) -> Optional[bytes]:
     """Kiolvassa az első teljes csomagot a bufferből, helyben módosítja."""
-    while len(buf) >= 4:
+    while len(buf) >= 6:  # 4B magic + 2B len
         idx = buf.find(_MAGIC)
         if idx < 0:
-            del buf[:-1]
+            del buf[:-3]  # megtartja az utolsó 3 bájtot (magic-1), ha épp érkezik
             return None
         if idx > 0:
             del buf[:idx]
-        if len(buf) < 4:
+        if len(buf) < 6:
             return None
-        n = (buf[2] << 8) | buf[3]
-        if len(buf) < 4 + n:
+        n = (buf[4] << 8) | buf[5]
+        if len(buf) < 6 + n:
             return None
-        payload = bytes(buf[4:4 + n])
-        del buf[:4 + n]
+        payload = bytes(buf[6:6 + n])
+        del buf[:6 + n]
         return payload
     return None
 
