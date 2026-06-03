@@ -101,16 +101,22 @@ class CameraManager:
     # ── belső metódusok ──────────────────────────────────────────────────────
 
     def _capture_loop(self) -> None:
+        consecutive_errors = 0
         while self._running:
             ret, frame = self._cap.read()
             if not ret:
                 if self._test_video and settings.CAMERA_TEST_LOOP:
                     self._cap.set(cv2.CAP_PROP_POS_FRAMES, 0)
+                    consecutive_errors = 0
                     continue
-                log.error("Kamera frame olvasási hiba")
+                consecutive_errors += 1
+                if consecutive_errors == 1:
+                    log.error("Kamera frame olvasási hiba — kamera nincs bekötve?")
+                elif consecutive_errors % 50 == 0:
+                    log.warning(f"Kamera nem olvasható ({consecutive_errors} egymás utáni hiba)")
                 time.sleep(0.1)
                 continue
-
+            consecutive_errors = 0
             with self._lock:
                 self._frame = frame
 
