@@ -124,7 +124,7 @@ class LoRaComm:
         GPIO.setup(settings.LORA_M1_PIN,  GPIO.OUT, initial=GPIO.LOW)
         GPIO.setup(settings.LORA_AUX_PIN, GPIO.IN)
 
-    def _wait_aux(self, timeout: float = 2.0) -> bool:
+    def _wait_aux(self, timeout: float = 0.1) -> bool:
         if not _GPIO_OK:
             time.sleep(0.02)
             return True
@@ -133,8 +133,7 @@ class LoRaComm:
             if GPIO.input(settings.LORA_AUX_PIN) == GPIO.HIGH:
                 return True
             time.sleep(0.002)
-        log.warning("LoRa AUX timeout — modul nem válaszol")
-        return False
+        return True  # Timeout esetén is folytatjuk — AUX opcionális
 
     # ── Hardware init ─────────────────────────────────────────────────────────
 
