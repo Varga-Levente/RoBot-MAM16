@@ -3,14 +3,13 @@
 E22-900T22D-V2 LoRa modul konfigurációs script.
 
 Mindkét eszközön (Pi + Jetson) futtatni kell egymás után.
-Beállítja a maximális air data rate-et (62.5kbps) és tartja a
-csatornát, hogy a 20Hz-es parancsküldés ne okozzon puffer-torlódást.
+Beállítja a maximális air data rate-et (62.5kbps).
 
 Futtatás Pi-n:
-    python3 configure_lora.py --pi
+    ~/RoBot-MAM16/BotController/venv/bin/python configure_lora.py --pi
 
 Futtatás Jetsonnál:
-    python3.8 configure_lora.py --jetson
+    ~/RoBot-MAM16/BotCode/venv/bin/python configure_lora.py --jetson
 """
 
 import argparse
@@ -19,23 +18,13 @@ import time
 
 # ── Config ────────────────────────────────────────────────────────────────────
 
-# Közös beállítások (mindkét modulon azonos)
-CHANNEL   = 18     # 850.125 + 18 = 868.125 MHz
-TX_POWER  = 22     # dBm (max)
+CHANNEL  = 18     # 850.125 + 18 = 868.125 MHz
+# REG0: UART 9600 baud (011) + 8N1 (00) + air 62.5kbps (110) = 0x66
+REG0_TARGET = 0x66
+# REG1: sub-packet 200B (01) + RSSI noise off (0) + TX 22dBm (11) = 0x43
+REG1_TARGET = 0x43
 
-# E22 REG0: UART baud + parity + air data rate
-# Bits 7-5: UART baud  (011=9600)
-# Bits 4-3: parity     (00=8N1)
-# Bits 2-0: air rate   (110=62.5kbps)
-REG0 = 0b01100110  # 0x66 — 9600 baud, 8N1, 62.5kbps air rate
-
-# E22 REG1: sub-packet (10=200 bytes), RSSI noise off, TX power (11=22dBm)
-REG1 = 0b01000011  # 0x43
-
-# E22 REG3: RSSI byte off, forward error correction on, LBT off
-REG3 = 0b00000000  # 0x00
-
-# ── Platform argumentumok ─────────────────────────────────────────────────────
+# ── Argumentumok ──────────────────────────────────────────────────────────────
 
 parser = argparse.ArgumentParser(description="E22 LoRa konfiguráció")
 grp = parser.add_mutually_exclusive_group(required=True)
@@ -62,7 +51,7 @@ GPIO.setup(M0_PIN,  GPIO.OUT, initial=GPIO.LOW)
 GPIO.setup(M1_PIN,  GPIO.OUT, initial=GPIO.LOW)
 GPIO.setup(AUX_PIN, GPIO.IN)
 
-def wait_aux(timeout=2.0):
+def wait_aux(timeout=3.0):
     deadline = time.monotonic() + timeout
     while time.monotonic() < deadline:
         try:
@@ -71,86 +60,117 @@ def wait_aux(timeout=2.0):
         except Exception:
             pass
         time.sleep(0.01)
-    return False  # Timeout — folytatjuk AUX nélkül
+    return False
 
-def set_mode(m0, m1):
-    GPIO.output(M0_PIN, GPIO.HIGH if m0 else GPIO.LOW)
-    GPIO.output(M1_PIN, GPIO.HIGH if m1 else GPIO.LOW)
-    time.sleep(0.1)
-    wait_aux(1.0)
+def read_all(ser, timeout=2.0):
+    """Olvas mindent ami jön a megadott ideig."""
+    buf = bytearray()
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        if ser.in_waiting:
+            buf.extend(ser.read(ser.in_waiting))
+        time.sleep(0.01)
+    return bytes(buf)
+
+# ── Serial megnyitása (konfigurációs mód ELŐTT) ───────────────────────────────
+
+print(f"Port: {UART_PORT}")
+print("Soros port megnyitása...")
+ser = serial.Serial(UART_PORT, 9600, timeout=2.0)
+time.sleep(0.2)
+
+# Bármilyen korábbi adat kiürítése
+ser.reset_input_buffer()
 
 # ── Konfigurációs mód (M0=HIGH, M1=HIGH) ─────────────────────────────────────
 
-print(f"Port: {UART_PORT}")
 print("Konfigurációs módba lépés (M0=H M1=H)...")
-set_mode(1, 1)
-time.sleep(0.2)
+GPIO.output(M0_PIN, GPIO.HIGH)
+GPIO.output(M1_PIN, GPIO.HIGH)
 
-ser = serial.Serial(UART_PORT, 9600, timeout=1.0)
-ser.reset_input_buffer()
+# AUX nélkül hosszabb várakozás
+aux_ok = wait_aux(3.0)
+print(f"  AUX: {'HIGH (kész)' if aux_ok else 'timeout — folytatjuk'}")
+time.sleep(0.5)  # extra várakozás az E22-nek
+
+# Bármilyen auto-küldött adat az E22-től
+auto = read_all(ser, 0.5)
+if auto:
+    print(f"  Auto-üzenet az E22-től: {auto.hex()}")
 
 # ── Jelenlegi konfig olvasása ─────────────────────────────────────────────────
 
-print("Jelenlegi konfig olvasása...")
+print("Jelenlegi konfig olvasása (C1 00 09)...")
 ser.write(bytes([0xC1, 0x00, 0x09]))
 ser.flush()
-time.sleep(0.2)
-resp = ser.read(12)
-if len(resp) >= 9:
-    print(f"  Jelenlegi: {resp.hex()}")
-    old_reg0   = resp[2]
-    old_reg1   = resp[3]
-    old_ch     = resp[4]
-    print(f"  REG0=0x{old_reg0:02X}  REG1=0x{old_reg1:02X}  CH={old_ch}")
-else:
-    print(f"  Nem sikerült olvasni (kapott: {resp.hex() if resp else 'semmi'})")
+resp = read_all(ser, 2.0)
+print(f"  Válasz ({len(resp)} byte): {resp.hex() if resp else 'semmi'}")
+
+if not resp:
+    print("\n  FIGYELEM: Nincs válasz az E22-től!")
+    print("  Lehetséges okok:")
+    print("  - M0/M1 pin nincs rendesen bekötve")
+    print("  - A modul nem lép be konfigurációs módba")
+    print("  - Ellenőrizd: M0→Pin38 (BCM20), M1→Pin40 (BCM21)")
+    print()
+    # Alternatív próba: C0 parancs
+    print("Alternatív próba (C0 00 09)...")
+    ser.write(bytes([0xC0, 0x00, 0x09]))
+    ser.flush()
+    resp2 = read_all(ser, 2.0)
+    print(f"  Válasz: {resp2.hex() if resp2 else 'semmi'}")
 
 # ── Új konfig írása ───────────────────────────────────────────────────────────
 
-# Csomag: C0 00 09 ADDH ADDL REG0 REG1 CH REG3 00 00 00
-cfg = bytes([
-    0xC0,          # Write command
-    0x00, 0x09,    # Starting address 0, length 9
-    0x00, 0x00,    # ADDH, ADDL (broadcast address)
-    REG0,          # UART 9600, 8N1, 62.5kbps air rate
-    REG1,          # Sub-packet 200B, RSSI off, 22dBm
-    CHANNEL,       # Channel 18 = 868.125 MHz
-    REG3,          # Default options
-    0x00, 0x00,    # CRYPT_H, CRYPT_L (hardware enc off)
-])
+print(f"\nÚj konfig írása...")
+print(f"  REG0=0x{REG0_TARGET:02X} (9600 baud, 8N1, 62.5kbps air rate)")
+print(f"  REG1=0x{REG1_TARGET:02X} (200B sub-packet, 22dBm TX power)")
+print(f"  CH  ={CHANNEL} ({850.125 + CHANNEL:.3f} MHz)")
 
-print(f"Új konfig írása: {cfg.hex()}")
+cfg = bytes([
+    0xC0,               # Write to EEPROM
+    0x00, 0x09,         # Start address 0, length 9
+    0x00, 0x00,         # ADDH, ADDL (broadcast)
+    REG0_TARGET,        # UART + air rate
+    REG1_TARGET,        # TX power + sub-packet
+    CHANNEL,            # Channel
+    0x00,               # REG3 default
+    0x00, 0x00,         # CRYPT off
+])
+print(f"  Küldés: {cfg.hex()}")
 ser.write(cfg)
 ser.flush()
-time.sleep(0.3)
-ack = ser.read(12)
-print(f"  Válasz: {ack.hex() if ack else 'semmi'}")
+ack = read_all(ser, 2.0)
+print(f"  Nyugta: {ack.hex() if ack else 'semmi'}")
 
 # ── Ellenőrzés ────────────────────────────────────────────────────────────────
 
-print("Konfig ellenőrzése...")
+print("\nKonfig ellenőrzése...")
 ser.write(bytes([0xC1, 0x00, 0x09]))
 ser.flush()
-time.sleep(0.2)
-verify = ser.read(12)
-if len(verify) >= 7:
-    actual_reg0 = verify[2]
-    actual_ch   = verify[4]
-    ok_reg0 = actual_reg0 == REG0
-    ok_ch   = actual_ch   == CHANNEL
-    print(f"  REG0: {'OK' if ok_reg0 else 'HIBA'} (várt=0x{REG0:02X}, kapott=0x{actual_reg0:02X})")
-    print(f"  CH:   {'OK' if ok_ch   else 'HIBA'} (várt={CHANNEL}, kapott={actual_ch})")
-    if ok_reg0 and ok_ch:
-        print("\n  ✓ Konfiguráció sikeres!")
-    else:
-        print("\n  ✗ Konfiguráció sikertelen — ellenőrizd a kapcsolatot.")
-else:
-    print(f"  Ellenőrzés nem sikerült: {verify.hex() if verify else 'semmi'}")
+verify = read_all(ser, 2.0)
+print(f"  Válasz: {verify.hex() if verify else 'semmi'}")
 
-# ── Vissza transparent módba (M0=LOW, M1=LOW) ─────────────────────────────────
+if len(verify) >= 12:
+    reg0_got = verify[5]
+    ch_got   = verify[7]
+    ok = reg0_got == REG0_TARGET and ch_got == CHANNEL
+    print(f"  REG0: {'OK' if reg0_got == REG0_TARGET else 'HIBA'} (várt=0x{REG0_TARGET:02X}, kapott=0x{reg0_got:02X})")
+    print(f"  CH:   {'OK' if ch_got == CHANNEL else 'HIBA'} (várt={CHANNEL}, kapott={ch_got})")
+    print(f"\n  {'✓ Konfiguráció sikeres!' if ok else '✗ Konfiguráció sikertelen'}")
+elif verify:
+    print("  Rövid válasz — formátum nem egyezik, de valami érkezett.")
+else:
+    print("  Nincs válasz — az E22 nem reagál AT parancsokra.")
+    print("  A robot valószínűleg az alapértelmezett 2.4kbps-en kommunikál.")
+    print("  Ebben az esetben állítsd CTRL_SEND_HZ=2-re a BotController/settings.py-ban.")
+
+# ── Vissza transparent módba ──────────────────────────────────────────────────
 
 ser.close()
 print("\nVissza transparent módba (M0=L M1=L)...")
-set_mode(0, 0)
+GPIO.output(M0_PIN, GPIO.LOW)
+GPIO.output(M1_PIN, GPIO.LOW)
+time.sleep(0.2)
 GPIO.cleanup([M0_PIN, M1_PIN, AUX_PIN])
 print("Kész.")
