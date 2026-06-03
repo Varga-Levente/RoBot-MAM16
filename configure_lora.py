@@ -5,6 +5,9 @@ E22-900T22D-V2 LoRa modul konfigurációs script.
 Mindkét eszközön (Pi + Jetson) futtatni kell egymás után.
 Beállítja a maximális air data rate-et (62.5kbps).
 
+FONTOS: A konfigurációs mód Mode 2: M0=LOW, M1=HIGH
+        (M0=HIGH, M1=HIGH = Mode 3 = Deep Sleep — NEM konfigurációs mód!)
+
 Futtatás Pi-n:
     ~/RoBot-MAM16/BotController/venv/bin/python configure_lora.py --pi
 
@@ -19,10 +22,19 @@ import time
 # ── Config ────────────────────────────────────────────────────────────────────
 
 CHANNEL  = 18     # 850.125 + 18 = 868.125 MHz
-# REG0: UART 9600 baud (011) + 8N1 (00) + air 62.5kbps (110) = 0x66
-REG0_TARGET = 0x66
-# REG1: sub-packet 200B (01) + RSSI noise off (0) + TX 22dBm (11) = 0x43
-REG1_TARGET = 0x43
+
+# REG0 (03H): UART baud + parity + air data rate
+#   bits 7,6,5 = 011 → 9600 baud
+#   bits 4,3   = 00  → 8N1
+#   bits 2,1,0 = 111 → 62.5kbps
+REG0_TARGET = 0x67
+
+# REG1 (04H): sub-packet + RSSI noise + TX power
+#   bits 7,6 = 00 → 240B sub-packet (largest)
+#   bit 5    = 0  → RSSI ambient noise off
+#   bits 4,3,2 = 000 → reserved
+#   bits 1,0 = 00 → 22dBm (max)
+REG1_TARGET = 0x00
 
 # ── Argumentumok ──────────────────────────────────────────────────────────────
 
@@ -78,27 +90,25 @@ print(f"Port: {UART_PORT}")
 print("Soros port megnyitása...")
 ser = serial.Serial(UART_PORT, 9600, timeout=2.0)
 time.sleep(0.2)
-
-# Bármilyen korábbi adat kiürítése
 ser.reset_input_buffer()
 
-# ── Konfigurációs mód (M0=HIGH, M1=HIGH) ─────────────────────────────────────
+# ── Konfigurációs mód (M0=LOW, M1=HIGH = Mode 2) ─────────────────────────────
+# FONTOS: Mode 2 = M0=0, M1=1  (NEM M0=1, M1=1 ami Deep Sleep!)
 
-print("Konfigurációs módba lépés (M0=H M1=H)...")
-GPIO.output(M0_PIN, GPIO.HIGH)
+print("Konfigurációs módba lépés (M0=L, M1=H = Mode 2)...")
+GPIO.output(M0_PIN, GPIO.LOW)
 GPIO.output(M1_PIN, GPIO.HIGH)
 
-# AUX nélkül hosszabb várakozás
 aux_ok = wait_aux(3.0)
 print(f"  AUX: {'HIGH (kész)' if aux_ok else 'timeout — folytatjuk'}")
-time.sleep(0.5)  # extra várakozás az E22-nek
+time.sleep(0.5)
 
-# Bármilyen auto-küldött adat az E22-től
 auto = read_all(ser, 0.5)
 if auto:
     print(f"  Auto-üzenet az E22-től: {auto.hex()}")
 
 # ── Jelenlegi konfig olvasása ─────────────────────────────────────────────────
+# Regiszterek 00H..08H: ADDH, ADDL, NETID, REG0, REG1, CH, REG3, CRYPT_H, CRYPT_L
 
 print("Jelenlegi konfig olvasása (C1 00 09)...")
 ser.write(bytes([0xC1, 0x00, 0x09]))
@@ -106,71 +116,94 @@ ser.flush()
 resp = read_all(ser, 2.0)
 print(f"  Válasz ({len(resp)} byte): {resp.hex() if resp else 'semmi'}")
 
-if not resp:
-    print("\n  FIGYELEM: Nincs válasz az E22-től!")
-    print("  Lehetséges okok:")
-    print("  - M0/M1 pin nincs rendesen bekötve")
-    print("  - A modul nem lép be konfigurációs módba")
-    print("  - Ellenőrizd: M0→Pin38 (BCM20), M1→Pin40 (BCM21)")
+if len(resp) >= 12:
+    # Válasz: C1 + start + len + 9 adat byte
+    addh   = resp[3]
+    addl   = resp[4]
+    netid  = resp[5]
+    reg0   = resp[6]
+    reg1   = resp[7]
+    ch     = resp[8]
+    reg3   = resp[9]
+    baud_idx  = (reg0 >> 5) & 0x07
+    air_idx   = reg0 & 0x07
+    air_rates = ["0.3k","1.2k","2.4k","4.8k","9.6k","19.2k","38.4k","62.5k"]
+    baud_rates = [1200,2400,4800,9600,19200,38400,57600,115200]
+    print(f"  ADDR:  0x{addh:02X}{addl:02X}  NETID: 0x{netid:02X}")
+    print(f"  REG0:  0x{reg0:02X}  → UART {baud_rates[baud_idx]}bps, air {air_rates[air_idx]}")
+    print(f"  REG1:  0x{reg1:02X}  CH: {ch} ({850.125+ch:.3f} MHz)")
+elif resp:
+    print("  Rövid vagy érvénytelen válasz.")
+else:
+    print("\n  FIGYELEM: Nincs válasz!")
+    print("  Ellenőrizd: M0→BCM20 (Pin38), M1→BCM21 (Pin40), AUX→BCM16 (Pin36)")
+    print("  A modul 9600 baud 8N1-en válaszol konfigurációs módban.")
     print()
-    # Alternatív próba: C0 parancs
-    print("Alternatív próba (C0 00 09)...")
-    ser.write(bytes([0xC0, 0x00, 0x09]))
-    ser.flush()
-    resp2 = read_all(ser, 2.0)
-    print(f"  Válasz: {resp2.hex() if resp2 else 'semmi'}")
+    print("  Folytatjuk az írással...")
 
 # ── Új konfig írása ───────────────────────────────────────────────────────────
+# Regiszterek: ADDH ADDL NETID REG0 REG1 CH REG3 CRYPT_H CRYPT_L (9 byte)
 
-print(f"\nÚj konfig írása...")
-print(f"  REG0=0x{REG0_TARGET:02X} (9600 baud, 8N1, 62.5kbps air rate)")
-print(f"  REG1=0x{REG1_TARGET:02X} (200B sub-packet, 22dBm TX power)")
-print(f"  CH  ={CHANNEL} ({850.125 + CHANNEL:.3f} MHz)")
+print(f"\nÚj konfig írása (C0 00 09 ...):")
+print(f"  ADDH=0x00 ADDL=0x00 NETID=0x00")
+print(f"  REG0=0x{REG0_TARGET:02X} → 9600 baud, 8N1, 62.5kbps air rate")
+print(f"  REG1=0x{REG1_TARGET:02X} → 240B sub-packet, 22dBm TX power")
+print(f"  CH  =0x{CHANNEL:02X} ({850.125 + CHANNEL:.3f} MHz)")
+print(f"  REG3=0x00 CRYPT_H=0x00 CRYPT_L=0x00")
 
 cfg = bytes([
-    0xC0,               # Write to EEPROM
-    0x00, 0x09,         # Start address 0, length 9
-    0x00, 0x00,         # ADDH, ADDL (broadcast)
-    REG0_TARGET,        # UART + air rate
-    REG1_TARGET,        # TX power + sub-packet
-    CHANNEL,            # Channel
-    0x00,               # REG3 default
-    0x00, 0x00,         # CRYPT off
+    0xC0,          # Write to EEPROM (C0 = permanent)
+    0x00, 0x09,    # Start address 0x00, length 9
+    0x00, 0x00,    # ADDH, ADDL (broadcast address)
+    0x00,          # NETID (network ID)
+    REG0_TARGET,   # REG0: UART baud + parity + air rate
+    REG1_TARGET,   # REG1: sub-packet + RSSI + TX power
+    CHANNEL,       # REG2/CH: channel number
+    0x00,          # REG3: no repeater, no LBT, WOR receiver default
+    0x00, 0x00,    # CRYPT_H, CRYPT_L: encryption key off
 ])
-print(f"  Küldés: {cfg.hex()}")
+print(f"  Küldés ({len(cfg)} byte): {cfg.hex()}")
 ser.write(cfg)
 ser.flush()
 ack = read_all(ser, 2.0)
-print(f"  Nyugta: {ack.hex() if ack else 'semmi'}")
+print(f"  Nyugta ({len(ack)} byte): {ack.hex() if ack else 'semmi'}")
 
 # ── Ellenőrzés ────────────────────────────────────────────────────────────────
 
-print("\nKonfig ellenőrzése...")
+print("\nKonfig ellenőrzése (C1 00 09)...")
 ser.write(bytes([0xC1, 0x00, 0x09]))
 ser.flush()
 verify = read_all(ser, 2.0)
-print(f"  Válasz: {verify.hex() if verify else 'semmi'}")
+print(f"  Válasz ({len(verify)} byte): {verify.hex() if verify else 'semmi'}")
 
 if len(verify) >= 12:
-    reg0_got = verify[5]
-    ch_got   = verify[7]
-    ok = reg0_got == REG0_TARGET and ch_got == CHANNEL
-    print(f"  REG0: {'OK' if reg0_got == REG0_TARGET else 'HIBA'} (várt=0x{REG0_TARGET:02X}, kapott=0x{reg0_got:02X})")
-    print(f"  CH:   {'OK' if ch_got == CHANNEL else 'HIBA'} (várt={CHANNEL}, kapott={ch_got})")
-    print(f"\n  {'✓ Konfiguráció sikeres!' if ok else '✗ Konfiguráció sikertelen'}")
+    reg0_got = verify[6]
+    reg1_got = verify[7]
+    ch_got   = verify[8]
+    ok_reg0 = reg0_got == REG0_TARGET
+    ok_reg1 = reg1_got == REG1_TARGET
+    ok_ch   = ch_got == CHANNEL
+    print(f"  REG0: {'OK' if ok_reg0 else 'HIBA'} (várt=0x{REG0_TARGET:02X}, kapott=0x{reg0_got:02X})")
+    print(f"  REG1: {'OK' if ok_reg1 else 'HIBA'} (várt=0x{REG1_TARGET:02X}, kapott=0x{reg1_got:02X})")
+    print(f"  CH:   {'OK' if ok_ch else 'HIBA'} (várt={CHANNEL}, kapott={ch_got})")
+    if ok_reg0 and ok_reg1 and ok_ch:
+        print(f"\n  ✓ Konfiguráció sikeres! Air rate: 62.5kbps, TX: 22dBm, CH: {CHANNEL}")
+        print(f"  Most beállíthatod a BotController/settings.py-ban: CTRL_SEND_HZ = 20")
+    else:
+        print(f"\n  ✗ Konfiguráció sikertelen — módosítások nem léptek életbe")
 elif verify:
-    print("  Rövid válasz — formátum nem egyezik, de valami érkezett.")
+    print("  Rövid válasz — formátum nem egyezik.")
 else:
-    print("  Nincs válasz — az E22 nem reagál AT parancsokra.")
-    print("  A robot valószínűleg az alapértelmezett 2.4kbps-en kommunikál.")
-    print("  Ebben az esetben állítsd CTRL_SEND_HZ=2-re a BotController/settings.py-ban.")
+    print("  Nincs válasz ellenőrzéskor.")
+    print("  Ha az írás nyugta sem érkezett, az E22 valószínűleg nem lép be konfigurációs módba.")
+    print("  Ellenőrizd az M0/M1 bekötést és a 9600 baud UART-ot.")
 
-# ── Vissza transparent módba ──────────────────────────────────────────────────
+# ── Vissza normal módba (M0=L, M1=L = Mode 0) ────────────────────────────────
 
 ser.close()
-print("\nVissza transparent módba (M0=L M1=L)...")
+print("\nVissza normál módba (M0=L, M1=L = Mode 0)...")
 GPIO.output(M0_PIN, GPIO.LOW)
 GPIO.output(M1_PIN, GPIO.LOW)
-time.sleep(0.2)
+time.sleep(0.5)
 GPIO.cleanup([M0_PIN, M1_PIN, AUX_PIN])
 print("Kész.")
