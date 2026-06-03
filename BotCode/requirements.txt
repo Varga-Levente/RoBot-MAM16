@@ -4,10 +4,10 @@ aiohttp>=3.9.0
 av>=11.0.0             # PyAV — video frame kezelés (aiortc függőség)
 
 # ── Gépi látás ─────────────────────────────────────────────────────────────
-# Jetson Nano-n az opencv-python helyett ajánlott a Jetson-specifikus build:
-#   https://github.com/mdegans/nano_build_opencv
-# Alternatív (ha az előre fordított verzió nem elérhető):
-opencv-python-headless>=4.9.0
+# Jetson Nano-n a cv2 rendszer szinten telepítve van a JetPack-kel (4.5.0+).
+# A venv-et --system-site-packages kapcsolóval kell létrehozni:
+#   python3.8 -m venv venv --system-site-packages
+# opencv-python-headless NEM szerepel itt — a system cv2-t használjuk.
 numpy>=1.24.0
 
 # ── Titkosítás ─────────────────────────────────────────────────────────────
