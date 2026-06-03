@@ -91,6 +91,16 @@ async def _control_tick(
 ) -> None:
     loop = asyncio.get_running_loop()
 
+    # ── Gamepad megnyitás / újracsatlakozás ──────────────────────────────
+    if not state.gamepad_connected:
+        log.info("Gamepad keresése...")
+        ok = await loop.run_in_executor(None, gamepad.open)
+        if not ok:
+            await asyncio.sleep(1.0)
+            return
+        state.gamepad_connected = True
+        log.info("Kontroller csatlakozva")
+
     # ── Handshake (vagy újra-handshake ha LoRa újrainicializálás kell) ──
     if state.lora_hw_ok and state.lora_reinit_requested:
         log.info("LoRa újrainicializálás...")
@@ -101,16 +111,6 @@ async def _control_tick(
     if state.lora_hw_ok and not state.lora_authenticated:
         log.info("LoRa handshake indítása...")
         await _handshake_loop(sender, state)
-
-    # ── Gamepad megnyitás / újracsatlakozás ──────────────────────────────
-    if not state.gamepad_connected:
-        log.info("Gamepad keresése...")
-        ok = await loop.run_in_executor(None, gamepad.open)
-        if not ok:
-            await asyncio.sleep(1.0)
-            return
-        state.gamepad_connected = True
-        log.info("Kontroller csatlakozva")
 
     # ── Fő vezérlési ciklus ───────────────────────────────────────────────
     t0 = loop.time()
