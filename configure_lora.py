@@ -46,18 +46,23 @@ args = parser.parse_args()
 
 if args.pi:
     UART_PORT = "/dev/ttyAMA0"
-    M0_PIN, M1_PIN, AUX_PIN = 20, 21, 16
+    GPIO_MODE = "BCM"
+    M0_PIN, M1_PIN, AUX_PIN = 20, 21, 16   # BCM számok
     import RPi.GPIO as GPIO
 else:
     UART_PORT = "/dev/ttyTHS1"
-    M0_PIN, M1_PIN, AUX_PIN = 20, 21, 16
+    GPIO_MODE = "BOARD"
+    M0_PIN, M1_PIN, AUX_PIN = 38, 40, 36   # Fizikai pin számok (BOARD mód)
     import Jetson.GPIO as GPIO
 
 import serial
 
 # ── GPIO init ─────────────────────────────────────────────────────────────────
 
-GPIO.setmode(GPIO.BCM)
+if GPIO_MODE == "BCM":
+    GPIO.setmode(GPIO.BCM)
+else:
+    GPIO.setmode(GPIO.BOARD)
 GPIO.setwarnings(False)
 GPIO.setup(M0_PIN,  GPIO.OUT, initial=GPIO.LOW)
 GPIO.setup(M1_PIN,  GPIO.OUT, initial=GPIO.LOW)
