@@ -80,4 +80,8 @@ def setup_logger() -> logging.Logger:
     sse_handler.setFormatter(logging.Formatter("%(name)s: %(message)s"))
     logger.addHandler(sse_handler)
 
+    # Zajos külső könyvtárak DEBUG spamjének elnyomása
+    for _noisy in ("aiortc", "aiohttp", "aioice", "av"):
+        logging.getLogger(_noisy).setLevel(logging.WARNING)
+
     return logging.getLogger("robot")
