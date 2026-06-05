@@ -324,6 +324,9 @@ class VisionProcessor:
     def _read_squares(
         self, binary: np.ndarray, cx: int, cy: int
     ) -> Optional[int]:
+        # Ha nincs detektált kör (csak ROI fallback), ne olvassunk zaj-digitot
+        if settings.VISION_REQUIRE_CIRCLE and self._last_circle is None:
+            return None
         thr  = settings.VISION_GRID_THRESHOLD
         mask = self._last_mask
         code = 0

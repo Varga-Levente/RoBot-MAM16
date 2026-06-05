@@ -57,6 +57,8 @@ VISION_DIGIT_INTERVAL_MS = 200   # Egy LED állapotváltás időablaka (ms) — 
 # Hány egymást követő egyforma frame kell a digit elfogadásához.
 # Tesztvideóhoz (GIF-alapú): 1; éles kameránál (zajszűrés): 2–3
 VISION_STABLE_FRAMES     = 1
+VISION_REQUIRE_CIRCLE  = True  # True = csak akkor olvasunk digitot, ha HoughCircles talált kört
+                                # False = ROI fallback esetén is próbál olvasni (zajosabb)
 VISION_PROCESS_WIDTH   = 320   # Feldolgozás előtt erre a szélességre scale-el (px); 0 = nincs
                                 # resize. 320px ≈ 16× kevesebb pixel mint 1280px → 10-15× CPU
                                 # csökkentés. A körkoordináták visszaskálázódnak az eredeti méretre.
