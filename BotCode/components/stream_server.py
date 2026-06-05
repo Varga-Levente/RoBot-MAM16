@@ -149,7 +149,9 @@ class _CameraVideoTrack(VideoStreamTrack):
         pts, time_base = await self.next_timestamp()
 
         if self._state and self._state.debug_annotation and self._vision:
-            frame_data = self._vision.get_debug_frame() or self._camera.get_frame()
+            frame_data = self._vision.get_debug_frame()
+            if frame_data is None:
+                frame_data = self._camera.get_frame()
         else:
             frame_data = self._camera.get_frame()
 
