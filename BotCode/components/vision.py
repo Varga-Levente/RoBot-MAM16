@@ -65,6 +65,8 @@ class VisionProcessor:
         self._last_cx:     int = 0
         self._last_cy:     int = 0
         self._last_binary: Optional[np.ndarray] = None
+        self._last_mask:   Optional[np.ndarray] = None
+        self._hough_skip:  int = 0   # HoughCircles kihagyás-számláló (interval caching)
 
         # CUDA ellenőrzés — Maxwell (SM 5.3) csak cvtColor + threshold-t támogat
         # megbízhatóan; median filter és bitwise_and+mask GPU-n nem fut ezen a HW-en
@@ -92,6 +94,8 @@ class VisionProcessor:
         self._last_cx        = 0
         self._last_cy        = 0
         self._last_binary    = None
+        self._last_mask      = None
+        self._hough_skip     = 0
 
     async def processing_loop(
         self,
@@ -204,7 +208,7 @@ class VisionProcessor:
                 gpu_mg, settings.VISION_LED_THRESHOLD, 255, cv2.THRESH_BINARY
             )
             binary = gpu_binary.download()
-            self._last_cx, self._last_cy, self._last_binary = cx, cy, binary
+            self._last_cx, self._last_cy, self._last_binary, self._last_mask = cx, cy, binary, mask
             return self._read_squares(binary, cx, cy)
 
         except Exception as e:
@@ -220,7 +224,7 @@ class VisionProcessor:
         masked_gray = cv2.cvtColor(masked, cv2.COLOR_BGR2GRAY)
         _, binary = cv2.threshold(masked_gray, settings.VISION_LED_THRESHOLD,
                                   255, cv2.THRESH_BINARY)
-        self._last_cx, self._last_cy, self._last_binary = cx, cy, binary
+        self._last_cx, self._last_cy, self._last_binary, self._last_mask = cx, cy, binary, mask
         return self._read_squares(binary, cx, cy)
 
     # ── Körkeresés ────────────────────────────────────────────────────────────
@@ -230,9 +234,16 @@ class VisionProcessor:
     ) -> Tuple[int, int, np.ndarray]:
         h, w = frame.shape[:2]
         mask = np.zeros((h, w), dtype=np.uint8)
-        cx, cy = w // 2, h // 2
 
         if settings.VISION_USE_HOUGH:
+            # Kör cache: VISION_HOUGH_INTERVAL frame-enként fut csak a HoughCircles
+            self._hough_skip += 1
+            if self._last_circle is not None and self._hough_skip < settings.VISION_HOUGH_INTERVAL:
+                cx, cy, r = self._last_circle
+                cv2.circle(mask, (cx, cy), r, 255, -1)
+                return cx, cy, mask
+
+            self._hough_skip = 0
             circles = cv2.HoughCircles(
                 blurred, cv2.HOUGH_GRADIENT, 1,
                 blurred.shape[0] / 8,
@@ -265,20 +276,34 @@ class VisionProcessor:
     # ── LED olvasás: rács (grid) alapú módszer ────────────────────────────────
     #
     # A kör/ROI középpontja (cx, cy) osztóként 4 negyedre bontja a bináris képet.
-    # Minden negyed átlag fényerejét nézi — nem kell tökéletes kontúr, ezért
-    # robusztus monitor- és valós LED-re egyaránt.
+    # Az átlagot CSAK a körön belüli pixelekre számítjuk (mask alapján) — a körön
+    # kívüli nullák nem hígítják a mérést.
     #
     # Bit-kiosztás (versenyspecifikáció): TL=1, TR=2, BL=4, BR=8
+
+    @staticmethod
+    def _quad_mean(b: np.ndarray, m: Optional[np.ndarray]) -> float:
+        """Átlag csak a maszkolt (körön belüli) pixelekre."""
+        if m is None or not b.size:
+            return float(np.mean(b)) if b.size else 0.0
+        n = int(np.count_nonzero(m))
+        return float(np.sum(b)) / n if n > 0 else 0.0
 
     def _read_squares(
         self, binary: np.ndarray, cx: int, cy: int
     ) -> Optional[int]:
         thr  = settings.VISION_GRID_THRESHOLD
+        mask = self._last_mask
         code = 0
-        if np.mean(binary[:cy, :cx]) > thr:  code |= 1  # TL
-        if np.mean(binary[:cy, cx:]) > thr:  code |= 2  # TR
-        if np.mean(binary[cy:, :cx]) > thr:  code |= 4  # BL
-        if np.mean(binary[cy:, cx:]) > thr:  code |= 8  # BR
+        quads = [
+            (binary[:cy, :cx], mask[:cy, :cx] if mask is not None else None, 1),  # TL
+            (binary[:cy, cx:], mask[:cy, cx:] if mask is not None else None, 2),  # TR
+            (binary[cy:, :cx], mask[cy:, :cx] if mask is not None else None, 4),  # BL
+            (binary[cy:, cx:], mask[cy:, cx:] if mask is not None else None, 8),  # BR
+        ]
+        for b, m, bit in quads:
+            if self._quad_mean(b, m) > thr:
+                code |= bit
         return code if code else None
 
     def get_debug_frame(self) -> Optional[np.ndarray]:
@@ -311,16 +336,21 @@ class VisionProcessor:
         cv2.line(out, (cx, 0), (cx, out.shape[0]), (0, 200, 255), 1)
         cv2.line(out, (0, cy), (out.shape[1], cy), (0, 200, 255), 1)
 
-        # Negyed fényerő és bit-érték jelzése
-        thr = settings.VISION_GRID_THRESHOLD
+        # Negyed fényerő és bit-érték jelzése (csak körön belüli pixelek átlaga)
+        thr  = settings.VISION_GRID_THRESHOLD
+        mask = self._last_mask
         quads = [
-            (binary[:cy, :cx], (cx // 2,       cy // 2),       "TL:1"),
-            (binary[:cy, cx:], (cx + (out.shape[1]-cx)//2, cy//2),        "TR:2"),
-            (binary[cy:, :cx], (cx // 2,       cy + (out.shape[0]-cy)//2), "BL:4"),
-            (binary[cy:, cx:], (cx + (out.shape[1]-cx)//2, cy + (out.shape[0]-cy)//2), "BR:8"),
+            (binary[:cy, :cx], mask[:cy, :cx] if mask is not None else None,
+             (cx // 2,                          cy // 2),                          "TL:1"),
+            (binary[:cy, cx:], mask[:cy, cx:] if mask is not None else None,
+             (cx + (out.shape[1]-cx)//2,        cy // 2),                          "TR:2"),
+            (binary[cy:, :cx], mask[cy:, :cx] if mask is not None else None,
+             (cx // 2,                          cy + (out.shape[0]-cy)//2),        "BL:4"),
+            (binary[cy:, cx:], mask[cy:, cx:] if mask is not None else None,
+             (cx + (out.shape[1]-cx)//2,        cy + (out.shape[0]-cy)//2),        "BR:8"),
         ]
-        for q, (lx, ly), lbl in quads:
-            mean_val = np.mean(q) if q.size else 0
+        for b, m, (lx, ly), lbl in quads:
+            mean_val = self._quad_mean(b, m)
             active   = mean_val > thr
             color    = (0, 255, 0) if active else (80, 80, 80)
             cv2.putText(out, f"{lbl} {mean_val:.1f}",
