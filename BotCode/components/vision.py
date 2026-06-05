@@ -61,6 +61,10 @@ class VisionProcessor:
         self._candidate:     Optional[int] = None
         self._last_circle:   Optional[Tuple[int, int, int]] = None
         self._last_annotated: Optional[np.ndarray] = None
+        # Cache: _process_frame() feltölti, annotate() reuse-olja (nincs dupla HoughCircles)
+        self._last_cx:     int = 0
+        self._last_cy:     int = 0
+        self._last_binary: Optional[np.ndarray] = None
 
         # CUDA ellenőrzés — Maxwell (SM 5.3) csak cvtColor + threshold-t támogat
         # megbízhatóan; median filter és bitwise_and+mask GPU-n nem fut ezen a HW-en
@@ -85,6 +89,9 @@ class VisionProcessor:
         self._candidate      = None
         self._last_circle    = None
         self._last_annotated = None
+        self._last_cx        = 0
+        self._last_cy        = 0
+        self._last_binary    = None
 
     async def processing_loop(
         self,
@@ -197,7 +204,7 @@ class VisionProcessor:
                 gpu_mg, settings.VISION_LED_THRESHOLD, 255, cv2.THRESH_BINARY
             )
             binary = gpu_binary.download()
-
+            self._last_cx, self._last_cy, self._last_binary = cx, cy, binary
             return self._read_squares(binary, cx, cy)
 
         except Exception as e:
@@ -213,6 +220,7 @@ class VisionProcessor:
         masked_gray = cv2.cvtColor(masked, cv2.COLOR_BGR2GRAY)
         _, binary = cv2.threshold(masked_gray, settings.VISION_LED_THRESHOLD,
                                   255, cv2.THRESH_BINARY)
+        self._last_cx, self._last_cy, self._last_binary = cx, cy, binary
         return self._read_squares(binary, cx, cy)
 
     # ── Körkeresés ────────────────────────────────────────────────────────────
@@ -287,11 +295,14 @@ class VisionProcessor:
     # ── Annotált frame ────────────────────────────────────────────────────────
 
     def annotate(self, frame: np.ndarray, digit: Optional[int]) -> np.ndarray:
-        out  = frame.copy()
-        gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
-        blurred = cv2.medianBlur(gray, 5)
+        out = frame.copy()
 
-        cx, cy, mask = self._find_circle_mask_cpu(frame, blurred)
+        # Cached értékek — _process_frame() már kiszámolta, nincs dupla HoughCircles
+        cx     = self._last_cx
+        cy     = self._last_cy
+        binary = self._last_binary
+        if binary is None:
+            return out  # még nem futott le _process_frame()
 
         if self._last_circle:
             lcx, lcy, lr = self._last_circle
@@ -304,10 +315,6 @@ class VisionProcessor:
             rh = min(settings.VISION_ROI_H, frame.shape[0] - ry)
             cv2.rectangle(out, (rx, ry), (rx + rw, ry + rh), (0, 200, 255), 2)
 
-        masked      = cv2.bitwise_and(frame, frame, mask=mask)
-        masked_gray = cv2.cvtColor(masked, cv2.COLOR_BGR2GRAY)
-        _, binary   = cv2.threshold(masked_gray, settings.VISION_LED_THRESHOLD,
-                                    255, cv2.THRESH_BINARY)
         contours, _ = cv2.findContours(binary, cv2.RETR_EXTERNAL,
                                        cv2.CHAIN_APPROX_SIMPLE)
         for c in contours:
