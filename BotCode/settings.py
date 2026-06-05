@@ -57,10 +57,15 @@ VISION_DIGIT_INTERVAL_MS = 200   # Egy LED állapotváltás időablaka (ms) — 
 # Hány egymást követő egyforma frame kell a digit elfogadásához.
 # Tesztvideóhoz (GIF-alapú): 1; éles kameránál (zajszűrés): 2–3
 VISION_STABLE_FRAMES     = 1
+VISION_PROCESS_WIDTH   = 320   # Feldolgozás előtt erre a szélességre scale-el (px); 0 = nincs
+                                # resize. 320px ≈ 16× kevesebb pixel mint 1280px → 10-15× CPU
+                                # csökkentés. A körkoordináták visszaskálázódnak az eredeti méretre.
+VISION_PROCESS_FPS     = 15    # Vision feldolgozás max fps-e (nem kell 30, egy 200ms-os digit
+                                # 15fps-nél is 3 frame-t kap)
 VISION_GRID_THRESHOLD  = 5     # Grid negyed átlag fényerő küszöb (0–255); csak a körön belüli
                                 # pixelekre számolva — pl. 5 ≈ ~2% fehér a körszegmensben
 VISION_HOUGH_INTERVAL  = 5     # HoughCircles minden N-edik frame-nél fut; közte az utolsó
-                                # kör reuse-olódik (CPU spórolás: 30fps → ~6fps keresés)
+                                # kör reuse-olódik
 VISION_COOLDOWN_MS       = 500   # Sikeres kódolvasás után ennyi ms-ig nem indul újabb felismerés
 
 # ── IR ────────────────────────────────────────────────────────────────────────

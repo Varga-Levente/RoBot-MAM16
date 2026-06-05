@@ -62,10 +62,13 @@ class VisionProcessor:
         self._last_circle:   Optional[Tuple[int, int, int]] = None
         self._last_annotated: Optional[np.ndarray] = None
         # Cache: _process_frame() feltölti, annotate() reuse-olja (nincs dupla HoughCircles)
+        # _last_cx/cy: eredeti felbontás koordinátái (annotációhoz)
+        # _last_binary/_last_mask: kisméretű (proc) frame tere (_read_squares-hoz)
         self._last_cx:     int = 0
         self._last_cy:     int = 0
         self._last_binary: Optional[np.ndarray] = None
         self._last_mask:   Optional[np.ndarray] = None
+        self._proc_scale:  float = 1.0  # eredeti_szélesség / proc_szélesség
         self._hough_skip:  int = 0   # HoughCircles kihagyás-számláló (interval caching)
 
         # CUDA ellenőrzés — Maxwell (SM 5.3) csak cvtColor + threshold-t támogat
@@ -95,6 +98,7 @@ class VisionProcessor:
         self._last_cy        = 0
         self._last_binary    = None
         self._last_mask      = None
+        self._proc_scale     = 1.0
         self._hough_skip     = 0
 
     async def processing_loop(
@@ -125,7 +129,7 @@ class VisionProcessor:
                         gate_code_queue.put_nowait(code)
                     except asyncio.QueueFull:
                         log.warning("Gate code queue teli, kód eldobva")
-            await asyncio.sleep(1.0 / (settings.CAMERA_FPS * 1.5))
+            await asyncio.sleep(1.0 / settings.VISION_PROCESS_FPS)
 
     # ── Fő feldolgozás ────────────────────────────────────────────────────────
 
@@ -186,19 +190,42 @@ class VisionProcessor:
             return self._extract_digit_cuda(frame)
         return self._extract_digit_cpu(frame)
 
+    @staticmethod
+    def _downscale(frame: np.ndarray) -> Tuple[np.ndarray, float]:
+        """Frame lekicsinyítése VISION_PROCESS_WIDTH-re. Visszaad (small, scale)
+        ahol scale = eredeti_szélesség / small_szélesség (≥1.0)."""
+        pw = settings.VISION_PROCESS_WIDTH
+        h, w = frame.shape[:2]
+        if pw > 0 and pw < w:
+            ph = int(h * pw / w)
+            return cv2.resize(frame, (pw, ph), interpolation=cv2.INTER_LINEAR), w / pw
+        return frame, 1.0
+
+    def _store_cache(self, cx_s: int, cy_s: int,
+                     binary: np.ndarray, mask: np.ndarray, scale: float) -> None:
+        """Cache feltöltése: small-frame bináris/maszk + vissza-skálázott középpont.
+        _last_circle MINDIG a kis (proc) frame terében marad — annotate() skáláz vissza."""
+        self._proc_scale  = scale
+        self._last_binary = binary
+        self._last_mask   = mask
+        self._last_cx = int(cx_s * scale)  # eredeti frame koordináta (annotációhoz)
+        self._last_cy = int(cy_s * scale)  # eredeti frame koordináta (annotációhoz)
+
     def _extract_digit_cuda(self, frame: np.ndarray) -> Optional[int]:
         """Hibrid GPU/CPU feldolgozás — Maxwell-kompatibilis műveletek GPU-n."""
         try:
+            small, scale = self._downscale(frame)
+
             # BGR → Szürke GPU-n (megbízható Maxwell-on)
             gpu_frame = cv2.cuda_GpuMat()
-            gpu_frame.upload(frame)
+            gpu_frame.upload(small)
             gpu_gray = cv2.cuda.cvtColor(gpu_frame, cv2.COLOR_BGR2GRAY)
             gray = gpu_gray.download()
 
             # Medián blur + körkeresés + maszkolás CPU-n
             # (Maxwell SM 5.3-on ezek GPU-n instabilak bizonyos képméreteknél)
             blurred = cv2.medianBlur(gray, 5)
-            cx, cy, mask = self._find_circle_mask_cpu(frame, blurred)
+            cx_s, cy_s, mask = self._find_circle_mask_cpu(small, blurred)
             masked_gray = cv2.bitwise_and(gray, gray, mask=mask)
 
             # Threshold GPU-n (megbízható, egyszerű elem-szintű művelet)
@@ -208,24 +235,25 @@ class VisionProcessor:
                 gpu_mg, settings.VISION_LED_THRESHOLD, 255, cv2.THRESH_BINARY
             )
             binary = gpu_binary.download()
-            self._last_cx, self._last_cy, self._last_binary, self._last_mask = cx, cy, binary, mask
-            return self._read_squares(binary, cx, cy)
+            self._store_cache(cx_s, cy_s, binary, mask, scale)
+            return self._read_squares(binary, cx_s, cy_s)
 
         except Exception as e:
             log.warning(f"CUDA frame hiba (CPU fallback): {e}")
             return self._extract_digit_cpu(frame)
 
     def _extract_digit_cpu(self, frame: np.ndarray) -> Optional[int]:
-        """CPU alapú feldolgozás (fallback)."""
-        gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+        """CPU alapú feldolgozás."""
+        small, scale = self._downscale(frame)
+        gray    = cv2.cvtColor(small, cv2.COLOR_BGR2GRAY)
         blurred = cv2.medianBlur(gray, 5)
-        cx, cy, mask = self._find_circle_mask_cpu(frame, blurred)
-        masked = cv2.bitwise_and(frame, frame, mask=mask)
+        cx_s, cy_s, mask = self._find_circle_mask_cpu(small, blurred)
+        masked      = cv2.bitwise_and(small, small, mask=mask)
         masked_gray = cv2.cvtColor(masked, cv2.COLOR_BGR2GRAY)
-        _, binary = cv2.threshold(masked_gray, settings.VISION_LED_THRESHOLD,
-                                  255, cv2.THRESH_BINARY)
-        self._last_cx, self._last_cy, self._last_binary, self._last_mask = cx, cy, binary, mask
-        return self._read_squares(binary, cx, cy)
+        _, binary   = cv2.threshold(masked_gray, settings.VISION_LED_THRESHOLD,
+                                    255, cv2.THRESH_BINARY)
+        self._store_cache(cx_s, cy_s, binary, mask, scale)
+        return self._read_squares(binary, cx_s, cy_s)
 
     # ── Körkeresés ────────────────────────────────────────────────────────────
 
@@ -244,13 +272,17 @@ class VisionProcessor:
                 return cx, cy, mask
 
             self._hough_skip = 0
+            # Radius paraméterek arányosan skálázva a kis frame méretéhez
+            _rscale = frame.shape[1] / max(settings.CAMERA_WIDTH, 1)
+            _min_r  = max(1, int(settings.VISION_HOUGH_MIN_RADIUS * _rscale))
+            _max_r  = int(settings.VISION_HOUGH_MAX_RADIUS * _rscale) if settings.VISION_HOUGH_MAX_RADIUS > 0 else 0
             circles = cv2.HoughCircles(
                 blurred, cv2.HOUGH_GRADIENT, 1,
                 blurred.shape[0] / 8,
                 param1=settings.VISION_HOUGH_PARAM1,
                 param2=settings.VISION_HOUGH_PARAM2,
-                minRadius=settings.VISION_HOUGH_MIN_RADIUS,
-                maxRadius=settings.VISION_HOUGH_MAX_RADIUS,
+                minRadius=_min_r,
+                maxRadius=_max_r,
             )
             if circles is not None:
                 circles = np.uint16(np.around(circles))
@@ -312,62 +344,78 @@ class VisionProcessor:
     # ── Annotált frame ────────────────────────────────────────────────────────
 
     def annotate(self, frame: np.ndarray, digit: Optional[int]) -> np.ndarray:
-        out = frame.copy()
-
-        # Cached értékek — _process_frame() már kiszámolta, nincs dupla HoughCircles
-        cx     = self._last_cx
-        cy     = self._last_cy
+        out    = frame.copy()
         binary = self._last_binary
         if binary is None:
-            return out  # még nem futott le _process_frame()
+            return out  # _process_frame() még nem futott
 
+        # Koordináták: cx/cy az eredeti frame-ben (rajzoláshoz),
+        # cx_s/cy_s a kis proc-frame-ben (binary/mask indexeléshez)
+        cx, cy = self._last_cx, self._last_cy
+        s      = self._proc_scale
+        cx_s   = int(cx / s) if s > 1.0 else cx
+        cy_s   = int(cy / s) if s > 1.0 else cy
+
+        mask = self._last_mask
+        thr  = settings.VISION_GRID_THRESHOLD
+        H, W = out.shape[:2]
+
+        # Négy negyed definíciója az eredeti frame-ben (rajzolás) és a binary-ban (mérés)
+        quads = [
+            # (b_slice, m_slice, draw_rect(x1,y1,x2,y2), label_pos, label)
+            (binary[:cy_s, :cx_s], mask[:cy_s, :cx_s] if mask is not None else None,
+             (0,  0,  cx, cy),  (max(cx//2-20, 2),        max(cy//2, 14)),       "TL:1"),
+            (binary[:cy_s, cx_s:], mask[:cy_s, cx_s:] if mask is not None else None,
+             (cx, 0,  W,  cy),  (cx + (W-cx)//2 - 20,     max(cy//2, 14)),       "TR:2"),
+            (binary[cy_s:, :cx_s], mask[cy_s:, :cx_s] if mask is not None else None,
+             (0,  cy, cx, H),   (max(cx//2-20, 2),        cy + (H-cy)//2),       "BL:4"),
+            (binary[cy_s:, cx_s:], mask[cy_s:, cx_s:] if mask is not None else None,
+             (cx, cy, W,  H),   (cx + (W-cx)//2 - 20,     cy + (H-cy)//2),       "BR:8"),
+        ]
+
+        # Negyed kiemelés: félátlátszó zöld (aktív) / sötétszürke (inaktív)
+        overlay = out.copy()
+        for b, m, (x1, y1, x2, y2), _, _ in quads:
+            active = self._quad_mean(b, m) > thr
+            color  = (0, 180, 0) if active else (40, 40, 40)
+            cv2.rectangle(overlay, (x1, y1), (x2, y2), color, -1)
+        cv2.addWeighted(overlay, 0.25, out, 0.75, 0, out)
+
+        # Kör / ROI keret (_last_circle a proc frame terében van → vissza kell skálázni)
         if self._last_circle:
-            lcx, lcy, lr = self._last_circle
+            lcx = int(self._last_circle[0] * s)
+            lcy = int(self._last_circle[1] * s)
+            lr  = int(self._last_circle[2] * s)
             cv2.circle(out, (lcx, lcy), lr, (0, 200, 255), 2)
             cv2.circle(out, (lcx, lcy), 3,  (0, 200, 255), -1)
         else:
             rx = settings.VISION_ROI_X
             ry = settings.VISION_ROI_Y
-            rw = min(settings.VISION_ROI_W, frame.shape[1] - rx)
-            rh = min(settings.VISION_ROI_H, frame.shape[0] - ry)
+            rw = min(settings.VISION_ROI_W, W - rx)
+            rh = min(settings.VISION_ROI_H, H - ry)
             cv2.rectangle(out, (rx, ry), (rx + rw, ry + rh), (0, 200, 255), 2)
 
         # Rács osztóvonalak
-        cv2.line(out, (cx, 0), (cx, out.shape[0]), (0, 200, 255), 1)
-        cv2.line(out, (0, cy), (out.shape[1], cy), (0, 200, 255), 1)
+        cv2.line(out, (cx, 0), (cx, H), (0, 200, 255), 1)
+        cv2.line(out, (0, cy), (W, cy), (0, 200, 255), 1)
 
-        # Negyed fényerő és bit-érték jelzése (csak körön belüli pixelek átlaga)
-        thr  = settings.VISION_GRID_THRESHOLD
-        mask = self._last_mask
-        quads = [
-            (binary[:cy, :cx], mask[:cy, :cx] if mask is not None else None,
-             (cx // 2,                          cy // 2),                          "TL:1"),
-            (binary[:cy, cx:], mask[:cy, cx:] if mask is not None else None,
-             (cx + (out.shape[1]-cx)//2,        cy // 2),                          "TR:2"),
-            (binary[cy:, :cx], mask[cy:, :cx] if mask is not None else None,
-             (cx // 2,                          cy + (out.shape[0]-cy)//2),        "BL:4"),
-            (binary[cy:, cx:], mask[cy:, cx:] if mask is not None else None,
-             (cx + (out.shape[1]-cx)//2,        cy + (out.shape[0]-cy)//2),        "BR:8"),
-        ]
-        for b, m, (lx, ly), lbl in quads:
+        # Negyed átlag szöveg
+        for b, m, _, (lx, ly), lbl in quads:
             mean_val = self._quad_mean(b, m)
             active   = mean_val > thr
-            color    = (0, 255, 0) if active else (80, 80, 80)
-            cv2.putText(out, f"{lbl} {mean_val:.1f}",
-                        (lx - 20, ly), cv2.FONT_HERSHEY_SIMPLEX, 0.45, color, 1)
+            color    = (0, 255, 0) if active else (160, 160, 160)
+            cv2.putText(out, f"{lbl} {mean_val:.0f}",
+                        (lx, ly), cv2.FONT_HERSHEY_SIMPLEX, 0.45, color, 1)
 
-        state_lbl = self._state.name
-        cv2.putText(out, state_lbl, (8, 22),
+        # Állapot + digit + CPU/GPU jelzés
+        cv2.putText(out, self._state.name, (8, 22),
                     cv2.FONT_HERSHEY_SIMPLEX, 0.6, (200, 200, 200), 2)
         if digit is not None:
-            cv2.putText(out, f"{digit:X}", (8, 50),
+            cv2.putText(out, f"{digit:X}", (8, 52),
                         cv2.FONT_HERSHEY_SIMPLEX, 1.2, (56, 189, 248), 2)
-
-        # CUDA állapot jelzése
         cuda_lbl = "GPU" if self._cuda_ok else "CPU"
-        cv2.putText(out, cuda_lbl, (out.shape[1] - 40, 22),
-                    cv2.FONT_HERSHEY_SIMPLEX, 0.5,
-                    (0, 255, 0) if self._cuda_ok else (0, 165, 255), 1)
+        cv2.putText(out, cuda_lbl, (W - 44, 22), cv2.FONT_HERSHEY_SIMPLEX,
+                    0.5, (0, 255, 0) if self._cuda_ok else (0, 165, 255), 1)
         return out
 
 
