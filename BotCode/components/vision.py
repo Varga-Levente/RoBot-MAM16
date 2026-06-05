@@ -262,32 +262,24 @@ class VisionProcessor:
         self._last_circle = None
         return rx + rw // 2, ry + rh // 2, mask
 
-    # ── Négyzet olvasás (CPU) ─────────────────────────────────────────────────
+    # ── LED olvasás: rács (grid) alapú módszer ────────────────────────────────
+    #
+    # A kör/ROI középpontja (cx, cy) osztóként 4 negyedre bontja a bináris képet.
+    # Minden negyed átlag fényerejét nézi — nem kell tökéletes kontúr, ezért
+    # robusztus monitor- és valós LED-re egyaránt.
+    #
+    # Bit-kiosztás (versenyspecifikáció): TL=1, TR=2, BL=4, BR=8
 
     def _read_squares(
         self, binary: np.ndarray, cx: int, cy: int
     ) -> Optional[int]:
-        contours, _ = cv2.findContours(binary, cv2.RETR_EXTERNAL,
-                                       cv2.CHAIN_APPROX_SIMPLE)
+        thr  = settings.VISION_GRID_THRESHOLD
         code = 0
-        for c in contours:
-            area = cv2.contourArea(c)
-            if area < settings.VISION_MIN_SQUARE_AREA:
-                continue
-            epsilon = 0.02 * cv2.arcLength(c, True)
-            approx  = cv2.approxPolyDP(c, epsilon, True)
-            if len(approx) != 4:
-                continue
-            x, y, bw, bh = cv2.boundingRect(approx)
-            if not (0.95 <= bw / float(bh) <= 1.05):
-                continue
-            sqx = x + bw // 2
-            sqy = y + bh // 2
-            if sqy < cy:
-                code |= 1 if sqx < cx else 2
-            else:
-                code |= 4 if sqx < cx else 8
-        return code if code > 0 else None
+        if np.mean(binary[:cy, :cx]) > thr:  code |= 1  # TL
+        if np.mean(binary[:cy, cx:]) > thr:  code |= 2  # TR
+        if np.mean(binary[cy:, :cx]) > thr:  code |= 4  # BL
+        if np.mean(binary[cy:, cx:]) > thr:  code |= 8  # BR
+        return code if code else None
 
     def get_debug_frame(self) -> Optional[np.ndarray]:
         return self._last_annotated
@@ -315,26 +307,24 @@ class VisionProcessor:
             rh = min(settings.VISION_ROI_H, frame.shape[0] - ry)
             cv2.rectangle(out, (rx, ry), (rx + rw, ry + rh), (0, 200, 255), 2)
 
-        contours, _ = cv2.findContours(binary, cv2.RETR_EXTERNAL,
-                                       cv2.CHAIN_APPROX_SIMPLE)
-        for c in contours:
-            if cv2.contourArea(c) < settings.VISION_MIN_SQUARE_AREA:
-                continue
-            epsilon = 0.02 * cv2.arcLength(c, True)
-            approx  = cv2.approxPolyDP(c, epsilon, True)
-            if len(approx) != 4:
-                continue
-            x, y, bw, bh = cv2.boundingRect(approx)
-            if not (0.95 <= bw / float(bh) <= 1.05):
-                continue
-            sqx, sqy = x + bw // 2, y + bh // 2
-            if sqy < cy:
-                bit_lbl = "TL:1" if sqx < cx else "TR:2"
-            else:
-                bit_lbl = "BL:4" if sqx < cx else "BR:8"
-            cv2.drawContours(out, [approx], -1, (0, 255, 0), 2)
-            cv2.putText(out, bit_lbl, (x, y - 4),
-                        cv2.FONT_HERSHEY_SIMPLEX, 0.4, (56, 189, 248), 1)
+        # Rács osztóvonalak
+        cv2.line(out, (cx, 0), (cx, out.shape[0]), (0, 200, 255), 1)
+        cv2.line(out, (0, cy), (out.shape[1], cy), (0, 200, 255), 1)
+
+        # Negyed fényerő és bit-érték jelzése
+        thr = settings.VISION_GRID_THRESHOLD
+        quads = [
+            (binary[:cy, :cx], (cx // 2,       cy // 2),       "TL:1"),
+            (binary[:cy, cx:], (cx + (out.shape[1]-cx)//2, cy//2),        "TR:2"),
+            (binary[cy:, :cx], (cx // 2,       cy + (out.shape[0]-cy)//2), "BL:4"),
+            (binary[cy:, cx:], (cx + (out.shape[1]-cx)//2, cy + (out.shape[0]-cy)//2), "BR:8"),
+        ]
+        for q, (lx, ly), lbl in quads:
+            mean_val = np.mean(q) if q.size else 0
+            active   = mean_val > thr
+            color    = (0, 255, 0) if active else (80, 80, 80)
+            cv2.putText(out, f"{lbl} {mean_val:.1f}",
+                        (lx - 20, ly), cv2.FONT_HERSHEY_SIMPLEX, 0.45, color, 1)
 
         state_lbl = self._state.name
         cv2.putText(out, state_lbl, (8, 22),
