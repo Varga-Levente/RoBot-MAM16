@@ -92,15 +92,19 @@ class VisionProcessor:
         gate_code_queue: asyncio.Queue,
         state,
     ) -> None:
+        loop = asyncio.get_running_loop()
         log.info("Vision feldolgozó elindult")
         while True:
             frame = camera.get_frame()
             if frame is not None:
-                code = self._process_frame(frame)
+                # CPU-intenzív HoughCircles nem blokkolja az event loopot
+                code = await loop.run_in_executor(None, self._process_frame, frame)
                 state.vision_state = self._state.name
                 state.last_digit   = self._candidate
                 if state.debug_annotation:
-                    self._last_annotated = self.annotate(frame, self._candidate)
+                    self._last_annotated = await loop.run_in_executor(
+                        None, self.annotate, frame, self._candidate
+                    )
                 else:
                     self._last_annotated = None
                 if code:

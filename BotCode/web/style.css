@@ -11,18 +11,19 @@
   --accent:      #38bdf8;
 
   /* Log szín kódolás */
-  --log-debug:     #cbd5e1;
-  --log-info:      #60a5fa;
-  --log-warning:   #fb923c;
-  --log-error:     #f87171;
+  --log-debug:         #cbd5e1;
+  --log-info:          #60a5fa;
+  --log-warning:       #fb923c;
+  --log-error:         #f87171;
   --log-critical-bg:   #ef4444;
   --log-critical-text: #000000;
 
-  --radius:   12px;
-  --radius-sm: 8px;
-  --blur:     14px;
-  --shadow:   0 8px 32px rgba(0, 0, 0, 0.5);
+  --radius:    12px;
+  --radius-sm:  8px;
+  --blur:      14px;
+  --shadow:    0 8px 32px rgba(0, 0, 0, 0.5);
   --transition: 0.25s ease;
+  --drawer-w:   380px;
 }
 
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
@@ -36,13 +37,20 @@ html, body {
   font-size: 14px;
 }
 
-/* ── Konténer & Videó ───────────────────────────────────────────────────── */
-.container {
-  position: relative;
+/* ── App konténer (flex sor layout) ─────────────────────────────────────── */
+.app-container {
+  display: flex;
   width: 100vw;
   height: 100vh;
-  display: flex;
-  align-items: stretch;
+  overflow: hidden;
+}
+
+/* ── Fő terület (videó + overlay panelek) ────────────────────────────────── */
+.main-area {
+  position: relative;
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
 }
 
 #video {
@@ -132,6 +140,13 @@ html, body {
   padding: 10px 14px;
 }
 
+.bar-sep {
+  width: 1px;
+  height: 20px;
+  background: var(--border);
+  flex-shrink: 0;
+}
+
 /* IR státusz */
 .ir-panel {
   display: flex;
@@ -188,131 +203,12 @@ html, body {
   background: var(--log-error);
 }
 
-/* ── Log panel ──────────────────────────────────────────────────────────── */
-.log-container {
-  position: absolute;
-  bottom: 16px; right: 16px;
-  z-index: 10;
-  width: min(480px, calc(100vw - 32px));
-  display: flex;
-  flex-direction: column;
-  border-radius: var(--radius);
-  overflow: hidden;
-  box-shadow: var(--shadow);
-  border: 1px solid var(--border);
-  transition: height var(--transition);
-}
-
-.log-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 8px 12px;
-  background: rgba(15, 15, 30, 0.85);
-  backdrop-filter: blur(var(--blur));
-  -webkit-backdrop-filter: blur(var(--blur));
-  cursor: pointer;
-  user-select: none;
-  border-bottom: 1px solid var(--border);
-}
-.log-header:hover { background: rgba(30, 30, 50, 0.9); }
-.log-title {
-  font-size: 12px;
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 1px;
-  color: var(--text-muted);
-}
-.log-count {
-  font-size: 11px;
-  color: var(--accent);
-  margin-left: 8px;
-}
-.toggle-btn {
-  background: none;
-  border: none;
-  color: var(--text-muted);
-  cursor: pointer;
-  font-size: 12px;
-  padding: 2px 6px;
-  border-radius: 4px;
-  transition: color var(--transition), background var(--transition);
-}
-.toggle-btn:hover { color: var(--text); background: var(--glass-hover); }
-
-.log-body {
-  height: 0;
-  overflow-y: auto;
-  background: rgba(5, 5, 15, 0.92);
-  backdrop-filter: blur(var(--blur));
-  -webkit-backdrop-filter: blur(var(--blur));
-  font-family: 'Courier New', 'Cascadia Code', monospace;
-  font-size: 12px;
-  line-height: 1.5;
-  transition: height var(--transition);
-  scrollbar-width: thin;
-  scrollbar-color: rgba(255,255,255,0.15) transparent;
-}
-.log-body.open {
-  height: 240px;
-}
-.log-body::-webkit-scrollbar { width: 5px; }
-.log-body::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.15); border-radius: 3px; }
-
-.log-entry {
-  display: flex;
-  gap: 8px;
-  padding: 2px 12px;
-  border-bottom: 1px solid rgba(255,255,255,0.03);
-  white-space: pre-wrap;
-  word-break: break-word;
-}
-.log-entry:last-child { border-bottom: none; }
-
-.log-ts    { color: #475569; flex-shrink: 0; }
-.log-level { font-weight: 700; flex-shrink: 0; min-width: 54px; }
-.log-msg   { flex: 1; }
-
-.log-entry.DEBUG   .log-level { color: var(--log-debug); }
-.log-entry.INFO    .log-level { color: var(--log-info); }
-.log-entry.WARNING .log-level { color: var(--log-warning); }
-.log-entry.ERROR   .log-level { color: var(--log-error); }
-.log-entry.CRITICAL {
-  background: var(--log-critical-bg);
-  border-radius: 3px;
-  margin: 1px 8px;
-  padding: 3px 8px;
-}
-.log-entry.CRITICAL .log-level,
-.log-entry.CRITICAL .log-ts,
-.log-entry.CRITICAL .log-msg {
-  color: var(--log-critical-text);
-  font-weight: 800;
-}
-
-/* ── Jobb panel stack ───────────────────────────────────────────────────── */
-.right-stack {
-  position: absolute;
-  bottom: 16px; right: 16px;
-  z-index: 10;
-  width: min(320px, calc(100vw - 32px));
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  align-items: stretch;
-}
-
-/* A log-container és debug-container pozicionálása a stack-en belül */
-.right-stack .log-container,
-.right-stack .debug-container {
-  position: static;
-  bottom: auto; right: auto;
-  width: 100%;
-  z-index: auto;
-}
-
-/* ── Debug panel ─────────────────────────────────────────────────────────── */
+/* ── Debug panel (jobb alsó overlay) ─────────────────────────────────────── */
 .debug-container {
+  position: absolute;
+  bottom: 16px; right: 16px;
+  z-index: 10;
+  width: min(320px, calc(100% - 32px));
   display: flex;
   flex-direction: column;
   border-radius: var(--radius);
@@ -413,6 +309,170 @@ html, body {
   background: rgba(56, 189, 248, 0.12);
 }
 
+/* ── Log drawer (jobb oldali kihúzható panel) ────────────────────────────── */
+.log-drawer {
+  width: 0;
+  flex-shrink: 0;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  background: rgba(5, 5, 15, 0.98);
+  border-left: 1px solid transparent;
+  transition: width 0.3s ease, border-color 0.3s ease;
+  z-index: 20;
+}
+.log-drawer.open {
+  width: var(--drawer-w);
+  border-left-color: var(--border);
+}
+
+.log-drawer-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 12px;
+  background: rgba(15, 15, 30, 0.95);
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+}
+
+/* ── Log szint szűrők ─────────────────────────────────────────────────────── */
+.log-filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+  background: rgba(10, 10, 20, 0.9);
+}
+
+.lvl-btn {
+  padding: 3px 8px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+  transition: all var(--transition);
+  opacity: 0.4;
+}
+.lvl-btn.active { opacity: 1; }
+.lvl-btn[data-level="DEBUG"].active    { border-color: var(--log-debug);       color: var(--log-debug); }
+.lvl-btn[data-level="INFO"].active     { border-color: var(--log-info);        color: var(--log-info); }
+.lvl-btn[data-level="WARNING"].active  { border-color: var(--log-warning);     color: var(--log-warning); }
+.lvl-btn[data-level="ERROR"].active    { border-color: var(--log-error);       color: var(--log-error); }
+.lvl-btn[data-level="CRITICAL"].active { border-color: var(--log-critical-bg); color: var(--log-critical-bg); }
+
+/* ── Log bejegyzések ─────────────────────────────────────────────────────── */
+.log-body {
+  flex: 1;
+  overflow-y: auto;
+  font-family: 'Courier New', 'Cascadia Code', monospace;
+  font-size: 12px;
+  line-height: 1.5;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255,255,255,0.15) transparent;
+}
+.log-body::-webkit-scrollbar { width: 5px; }
+.log-body::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.15); border-radius: 3px; }
+
+/* Szűrő elrejtés CSS-sel (DOM bejegyzések megmaradnak) */
+.log-body.hide-DEBUG    .log-entry.DEBUG    { display: none; }
+.log-body.hide-INFO     .log-entry.INFO     { display: none; }
+.log-body.hide-WARNING  .log-entry.WARNING  { display: none; }
+.log-body.hide-ERROR    .log-entry.ERROR    { display: none; }
+.log-body.hide-CRITICAL .log-entry.CRITICAL { display: none; }
+
+.log-entry {
+  display: flex;
+  gap: 8px;
+  padding: 2px 12px;
+  border-bottom: 1px solid rgba(255,255,255,0.03);
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+.log-entry:last-child { border-bottom: none; }
+
+.log-ts    { color: #475569; flex-shrink: 0; }
+.log-level { font-weight: 700; flex-shrink: 0; min-width: 54px; }
+.log-msg   { flex: 1; }
+
+.log-entry.DEBUG   .log-level { color: var(--log-debug); }
+.log-entry.INFO    .log-level { color: var(--log-info); }
+.log-entry.WARNING .log-level { color: var(--log-warning); }
+.log-entry.ERROR   .log-level { color: var(--log-error); }
+.log-entry.CRITICAL {
+  background: var(--log-critical-bg);
+  border-radius: 3px;
+  margin: 1px 8px;
+  padding: 3px 8px;
+}
+.log-entry.CRITICAL .log-level,
+.log-entry.CRITICAL .log-ts,
+.log-entry.CRITICAL .log-msg {
+  color: var(--log-critical-text);
+  font-weight: 800;
+}
+
+/* ── Közös toggle gomb ───────────────────────────────────────────────────── */
+.log-title {
+  font-size: 12px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  color: var(--text-muted);
+}
+.log-count {
+  font-size: 11px;
+  color: var(--accent);
+  margin-left: 8px;
+}
+.toggle-btn {
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  font-size: 12px;
+  padding: 2px 6px;
+  border-radius: 4px;
+  transition: color var(--transition), background var(--transition);
+}
+.toggle-btn:hover { color: var(--text); background: var(--glass-hover); }
+
+/* ── Log megnyitó gomb (jobb szél, függőleges szöveg) ────────────────────── */
+.log-trigger {
+  position: fixed;
+  right: 0;
+  top: 50%;
+  transform: translateY(-50%);
+  writing-mode: vertical-rl;
+  text-orientation: mixed;
+  padding: 16px 8px;
+  background: rgba(15, 15, 30, 0.88);
+  border: 1px solid var(--border);
+  border-right: none;
+  border-radius: var(--radius) 0 0 var(--radius);
+  color: var(--text-muted);
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 1px;
+  z-index: 30;
+  transition: opacity var(--transition), color var(--transition), background var(--transition);
+  backdrop-filter: blur(var(--blur));
+  -webkit-backdrop-filter: blur(var(--blur));
+  box-shadow: var(--shadow);
+}
+.log-trigger:hover { color: var(--text); background: rgba(30, 30, 50, 0.95); }
+.log-trigger.hidden {
+  opacity: 0;
+  pointer-events: none;
+}
+
 /* ── Videó overlay: nincs stream ────────────────────────────────────────── */
 .no-video {
   position: absolute;
@@ -431,8 +491,9 @@ html, body {
 .no-video-text { font-size: 15px; opacity: 0.5; }
 
 /* ── Reszponzív ─────────────────────────────────────────────────────────── */
-@media (max-width: 600px) {
+@media (max-width: 700px) {
   .gate-panel .code { font-size: 20px; }
-  .right-stack { width: calc(100vw - 32px); }
-  .log-body.open { height: 180px; }
+  .debug-container { width: calc(100% - 32px); }
+  :root { --drawer-w: 100vw; }
+  .log-drawer.open { border-left: none; }
 }

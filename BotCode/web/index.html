@@ -7,47 +7,50 @@
   <link rel="stylesheet" href="/web/style.css">
 </head>
 <body>
-<div class="container">
 
-  <!-- Videóstream -->
-  <video id="video" autoplay muted playsinline></video>
+<div class="app-container" id="app-container">
 
-  <!-- Stream nincs overlay -->
-  <div class="no-video" id="no-video">
-    <div class="no-video-icon">📡</div>
-    <div class="no-video-text">Stream csatlakoztatása...</div>
-  </div>
+  <!-- ── Fő terület (videó + overlay panelek) ──────────────────────────── -->
+  <div class="main-area" id="main-area">
 
-  <!-- Felső sáv: szerep badge + kapu kód -->
-  <div class="top-bar glass">
-    <span class="role-badge" id="role-badge">PAC-MAN</span>
+    <!-- Videóstream -->
+    <video id="video" autoplay muted playsinline></video>
 
-    <div class="gate-panel">
-      <span class="label">Kapukód</span>
-      <span class="code" id="gate-code">---</span>
-    </div>
-  </div>
-
-  <!-- Alsó bal: IR státusz + LoRa kapcsolat -->
-  <div class="bottom-bar glass">
-    <div class="ir-panel">
-      <span class="label">IR</span>
-      <span class="ir-code" id="ir-code">---</span>
-      <div class="ir-dot" id="ir-dot"></div>
+    <!-- Stream nincs overlay -->
+    <div class="no-video" id="no-video">
+      <div class="no-video-icon">📡</div>
+      <div class="no-video-text">Stream csatlakoztatása...</div>
     </div>
 
-    <div style="width: 1px; height: 20px; background: var(--border);"></div>
-
-    <div class="conn-panel">
-      <div class="conn-dot" id="conn-dot"></div>
-      <span id="conn-text">Csatlakozás...</span>
+    <!-- Felső sáv: szerep badge + kapu kód -->
+    <div class="top-bar glass">
+      <span class="role-badge" id="role-badge">PAC-MAN</span>
+      <div class="gate-panel">
+        <span class="label">Kapukód</span>
+        <span class="code" id="gate-code">---</span>
+      </div>
     </div>
-  </div>
 
-  <!-- Jobb oldali panel stack (debug + log) -->
-  <div class="right-stack">
+    <!-- Alsó sáv: IR + LoRa + WebRTC -->
+    <div class="bottom-bar glass">
+      <div class="ir-panel">
+        <span class="label">IR</span>
+        <span class="ir-code" id="ir-code">---</span>
+        <div class="ir-dot" id="ir-dot"></div>
+      </div>
+      <div class="bar-sep"></div>
+      <div class="conn-panel">
+        <div class="conn-dot" id="conn-dot"></div>
+        <span id="conn-text">LoRa...</span>
+      </div>
+      <div class="bar-sep"></div>
+      <div class="conn-panel">
+        <div class="conn-dot" id="webrtc-dot"></div>
+        <span id="webrtc-text">Stream...</span>
+      </div>
+    </div>
 
-    <!-- Debug panel (ki/be csukható) -->
+    <!-- Debug panel (jobb alsó overlay) -->
     <div class="debug-container" id="debug-container">
       <div class="debug-header" onclick="toggleDebug()">
         <span class="log-title">Debug</span>
@@ -108,21 +111,32 @@
       </div>
     </div>
 
-    <!-- Log panel (ki/be csukható) -->
-    <div class="log-container" id="log-container">
-      <div class="log-header" id="log-toggle" onclick="toggleLog()">
-        <div>
-          <span class="log-title">Napló</span>
-          <span class="log-count" id="log-count">0 sor</span>
-        </div>
-        <button class="toggle-btn" id="toggle-btn">▲</button>
-      </div>
-      <div class="log-body" id="log-body"></div>
-    </div>
+  </div><!-- /main-area -->
 
+  <!-- ── Log drawer (jobb oldali kihúzható panel) ───────────────────────── -->
+  <div class="log-drawer" id="log-drawer">
+    <div class="log-drawer-header">
+      <div>
+        <span class="log-title">Napló</span>
+        <span class="log-count" id="log-count">0 sor</span>
+      </div>
+      <button class="toggle-btn" onclick="toggleLog()" title="Bezárás">✕</button>
+    </div>
+    <div class="log-filters">
+      <button class="lvl-btn active" data-level="DEBUG"    onclick="toggleFilter('DEBUG')">DEBUG</button>
+      <button class="lvl-btn active" data-level="INFO"     onclick="toggleFilter('INFO')">INFO</button>
+      <button class="lvl-btn active" data-level="WARNING"  onclick="toggleFilter('WARNING')">WARN</button>
+      <button class="lvl-btn active" data-level="ERROR"    onclick="toggleFilter('ERROR')">ERROR</button>
+      <button class="lvl-btn active" data-level="CRITICAL" onclick="toggleFilter('CRITICAL')">CRIT</button>
+    </div>
+    <div class="log-body" id="log-body"></div>
   </div>
 
-</div>
+</div><!-- /app-container -->
+
+<!-- Log megnyitó gomb (jobb szélen, függőleges) -->
+<button class="log-trigger" id="log-trigger" onclick="toggleLog()">Napló</button>
+
 <script src="/web/app.js"></script>
 </body>
 </html>

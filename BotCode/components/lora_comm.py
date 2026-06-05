@@ -264,6 +264,11 @@ class LoRaComm:
             while True:
                 await asyncio.sleep(10)
 
+        # Soros port sikeresen megnyílt — LoRa hardver aktív
+        if not settings.DRY_RUN:
+            state.lora_connected = True
+            log.info("LoRa UART aktív, handshake várakozás...")
+
         self._challenge = os.urandom(32)
         loop = asyncio.get_event_loop()
         _last_nonce_tx = 0.0

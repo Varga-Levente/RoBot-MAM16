@@ -1,33 +1,39 @@
 "use strict";
 
 // ── Állapot ────────────────────────────────────────────────────────────────
-const MAX_LOG_ROWS    = 500;
-let   logOpen         = false;
-let   debugOpen       = false;
-let   annotationOn    = false;
-let   logRowCount     = 0;
-let   autoScroll      = true;
-let   pc              = null;   // RTCPeerConnection
-let   stateInterval   = null;
+const MAX_LOG_ROWS = 500;
+let logOpen        = false;
+let debugOpen      = false;
+let annotationOn   = false;
+let logRowCount    = 0;
+let autoScroll     = true;
+let pc             = null;
+let stateInterval  = null;
+
+// Log szint szűrők (true = megjelenítve)
+const logFilters = { DEBUG: true, INFO: true, WARNING: true, ERROR: true, CRITICAL: true };
 
 // ── DOM referenciák ────────────────────────────────────────────────────────
-const video       = document.getElementById("video");
-const noVideo     = document.getElementById("no-video");
-const roleBadge   = document.getElementById("role-badge");
-const gateCode    = document.getElementById("gate-code");
-const irCode      = document.getElementById("ir-code");
-const irDot       = document.getElementById("ir-dot");
-const connDot     = document.getElementById("conn-dot");
-const connText    = document.getElementById("conn-text");
-const logBody     = document.getElementById("log-body");
-const logCount    = document.getElementById("log-count");
-const toggleBtn   = document.getElementById("toggle-btn");
+const video        = document.getElementById("video");
+const noVideo      = document.getElementById("no-video");
+const roleBadge    = document.getElementById("role-badge");
+const gateCode     = document.getElementById("gate-code");
+const irCode       = document.getElementById("ir-code");
+const irDot        = document.getElementById("ir-dot");
+const connDot      = document.getElementById("conn-dot");
+const connText     = document.getElementById("conn-text");
+const webrtcDot    = document.getElementById("webrtc-dot");
+const webrtcText   = document.getElementById("webrtc-text");
+const logBody      = document.getElementById("log-body");
+const logCount     = document.getElementById("log-count");
+const logDrawer    = document.getElementById("log-drawer");
+const logTrigger   = document.getElementById("log-trigger");
 
-// ── Log panel ──────────────────────────────────────────────────────────────
+// ── Log drawer toggle ──────────────────────────────────────────────────────
 window.toggleLog = function () {
   logOpen = !logOpen;
-  logBody.classList.toggle("open", logOpen);
-  toggleBtn.textContent = logOpen ? "▼" : "▲";
+  logDrawer.classList.toggle("open", logOpen);
+  logTrigger.classList.toggle("hidden", logOpen);
   if (logOpen && autoScroll) scrollLogToBottom();
 };
 
@@ -52,6 +58,16 @@ window.toggleAnnotation = async function () {
   } catch (_) {}
 };
 
+// ── Log szint szűrők ───────────────────────────────────────────────────────
+window.toggleFilter = function (level) {
+  logFilters[level] = !logFilters[level];
+  const btn = document.querySelector(`.lvl-btn[data-level="${level}"]`);
+  if (btn) btn.classList.toggle("active", logFilters[level]);
+  // CSS class alapú elrejtés — a DOM bejegyzések megmaradnak (szűrő visszakapcsoláskor újra látszanak)
+  logBody.classList.toggle(`hide-${level}`, !logFilters[level]);
+};
+
+// ── Log kezelés ────────────────────────────────────────────────────────────
 function scrollLogToBottom() {
   logBody.scrollTop = logBody.scrollHeight;
 }
@@ -89,8 +105,7 @@ function startLogStream() {
 
   es.onmessage = (evt) => {
     try {
-      const entry = JSON.parse(evt.data);
-      appendLog(entry);
+      appendLog(JSON.parse(evt.data));
     } catch (_) {}
   };
 
@@ -105,8 +120,7 @@ async function fetchState() {
   try {
     const res = await fetch("/state");
     if (!res.ok) return;
-    const s = await res.json();
-    updateState(s);
+    updateState(await res.json());
   } catch (_) {}
 }
 
@@ -129,9 +143,9 @@ function updateState(s) {
   irCode.textContent = s.ir_transmitting ? (s.gate_code || "---") : "---";
   irDot.classList.toggle("active", !!s.ir_transmitting);
 
-  // LoRa kapcsolat
+  // LoRa kapcsolat (kizárólag a lora_connected állapotból — nem érintik a WebRTC események)
   connDot.classList.toggle("connected", !!s.lora_connected);
-  connDot.classList.toggle("error", !s.lora_connected);
+  connDot.classList.toggle("error",    !s.lora_connected);
   connText.textContent = s.lora_connected ? "LoRa kapcsolva" : "LoRa nincs";
 
   // Debug panel
@@ -171,12 +185,8 @@ function updateState(s) {
 
 // ── WebRTC kapcsolat ──────────────────────────────────────────────────────
 async function startWebRTC() {
-  const iceServers = [];
-  // Ha a szerver küld STUN szerver konfigurációt, itt lehetne dinamikusan beállítani.
-  // Alapesetben üres (LAN-on nincs szükség STUN-ra).
-
   pc = new RTCPeerConnection({
-    iceServers,
+    iceServers: [],
     iceTransportPolicy:  "all",
     bundlePolicy:        "max-bundle",
     rtcpMuxPolicy:       "require",
@@ -188,16 +198,16 @@ async function startWebRTC() {
     if (evt.track.kind === "video") {
       video.srcObject = evt.streams[0];
       noVideo.classList.add("hidden");
-      setConnStatus("WebRTC csatlakozva", "connected");
+      setWebRTCStatus("Stream OK", "connected");
     }
   };
 
   pc.onconnectionstatechange = () => {
     const st = pc.connectionState;
     if (st === "connected") {
-      setConnStatus("WebRTC csatlakozva", "connected");
+      setWebRTCStatus("Stream OK", "connected");
     } else if (st === "failed" || st === "disconnected" || st === "closed") {
-      setConnStatus("Stream megszakadt", "error");
+      setWebRTCStatus("Stream off", "error");
       noVideo.classList.remove("hidden");
       setTimeout(startWebRTC, 3000);
     }
@@ -224,7 +234,7 @@ async function startWebRTC() {
     await pc.setRemoteDescription(new RTCSessionDescription(answer));
   } catch (err) {
     console.error("WebRTC offer hiba:", err);
-    setConnStatus("Szerver nem elérhető", "error");
+    setWebRTCStatus("Szerver off", "error");
     setTimeout(startWebRTC, 4000);
   }
 }
@@ -242,9 +252,10 @@ function waitForIceGathering(pc, timeoutMs) {
   });
 }
 
-function setConnStatus(text, cssClass) {
-  connText.textContent = text;
-  connDot.className    = "conn-dot " + (cssClass || "");
+// WebRTC státusz frissítése — csak a webrtc-dot és webrtc-text elemeket érinti
+function setWebRTCStatus(text, cssClass) {
+  if (webrtcText) webrtcText.textContent = text;
+  if (webrtcDot)  webrtcDot.className    = "conn-dot " + (cssClass || "");
 }
 
 // ── Segédfüggvény ─────────────────────────────────────────────────────────
