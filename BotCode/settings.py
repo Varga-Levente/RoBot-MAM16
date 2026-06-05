@@ -30,9 +30,9 @@ CAMERA_TEST_LOOP  = True # True = videó végén visszaugrik az elejére
 # Ha a kör nem detektálható (pl. rossz fényviszony), visszaesik a fix ROI-ra.
 VISION_USE_HOUGH        = True   # True = HoughCircles (ajánlott); False = fix ROI
 VISION_HOUGH_PARAM1     = 100    # Canny edge detector felső küszöb
-VISION_HOUGH_PARAM2     = 30     # Kör akkumulátor küszöb (kisebb = több találat)
-VISION_HOUGH_MIN_RADIUS = 100    # Minimális kapu sugár pixelben
-VISION_HOUGH_MAX_RADIUS = 200    # Maximális kapu sugár pixelben
+VISION_HOUGH_PARAM2     = 25     # Kör akkumulátor küszöb (kisebb = több találat)
+VISION_HOUGH_MIN_RADIUS = 50     # Minimális kapu sugár pixelben (távolról ~50px)
+VISION_HOUGH_MAX_RADIUS = 0      # 0 = nincs felső korlát (közelről akár 500px+)
 VISION_HOUGH_MIN_DIST   = 100    # Köröktől elvárt min. távolság px-ben (CUDA HoughCircles)
 
 # Fix ROI fallback — csak akkor használt, ha HoughCircles nem talál kört

@@ -284,9 +284,9 @@ class VisionProcessor:
             sqx = x + bw // 2
             sqy = y + bh // 2
             if sqy < cy:
-                code += 1 if sqx < cx else 2
+                code |= 1 if sqx < cx else 2
             else:
-                code += 4 if sqx < cx else 8
+                code |= 4 if sqx < cx else 8
         return code if code > 0 else None
 
     def get_debug_frame(self) -> Optional[np.ndarray]:
