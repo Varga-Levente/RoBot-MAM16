@@ -16,7 +16,7 @@ DRY_RUN    = False       # True = hardver nélküli szimulációs mód (CLI --dr
 CAMERA_WIDTH  = 1280     # Felbontás szélesség (px)
 CAMERA_HEIGHT = 720      # Felbontás magasság  (px)
 CAMERA_FPS    = 30       # Képkocka / másodperc
-CAMERA_FLIP   = 0        # nvvidconv flip-method: 0=nincs, 1=h-flip, 2=v-flip, 4=180°
+CAMERA_FLIP   = 2        # 0=nincs, 1=90°CCW, 2=180°, 3=90°CW, 4=vízszintes tükrözés
 
 # Tesztelési mód: ha nem üres, a kamera helyett videófájlt használ
 # Példa: CAMERA_TEST_VIDEO = "test_gate.mp4"

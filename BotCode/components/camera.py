@@ -29,7 +29,7 @@ def _build_gstreamer_pipeline() -> str:
         f"video/x-raw(memory:NVMM), "
         f"width={settings.CAMERA_WIDTH}, height={settings.CAMERA_HEIGHT}, "
         f"format=NV12, framerate={settings.CAMERA_FPS}/1 ! "
-        f"nvvidconv flip-method={settings.CAMERA_FLIP} ! "
+        f"nvvidconv ! "
         f"video/x-raw, "
         f"width={settings.CAMERA_WIDTH}, height={settings.CAMERA_HEIGHT}, format=BGRx ! "
         f"videoconvert ! "
@@ -100,6 +100,25 @@ class CameraManager:
 
     # ── belső metódusok ──────────────────────────────────────────────────────
 
+    @staticmethod
+    def _flip_frame(frame: np.ndarray) -> np.ndarray:
+        """CAMERA_FLIP értéke alapján forgatja/tükrözi a képet (nvvidconv flip-method sorrend)."""
+        f = settings.CAMERA_FLIP
+        if f == 0:
+            return frame
+        if f == 1:
+            return cv2.rotate(frame, cv2.ROTATE_90_COUNTERCLOCKWISE)
+        if f == 2:
+            return cv2.rotate(frame, cv2.ROTATE_180)
+        if f == 3:
+            return cv2.rotate(frame, cv2.ROTATE_90_CLOCKWISE)
+        if f == 4:
+            return cv2.flip(frame, 1)   # vízszintes tükrözés
+        if f == 6:
+            return cv2.flip(cv2.rotate(frame, cv2.ROTATE_90_CLOCKWISE), 1)
+        log.warning(f"Ismeretlen CAMERA_FLIP érték: {f} — nincs forgatás")
+        return frame
+
     def _capture_loop(self) -> None:
         consecutive_errors = 0
         while self._running:
@@ -117,6 +136,7 @@ class CameraManager:
                 time.sleep(0.1)
                 continue
             consecutive_errors = 0
+            frame = self._flip_frame(frame)
             with self._lock:
                 self._frame = frame
 
