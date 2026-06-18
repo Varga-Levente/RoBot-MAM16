@@ -23,9 +23,7 @@ from utils.logger import setup_logger
 from components.camera         import CameraManager
 from components.vision         import VisionProcessor
 from components.ir_transmitter import IRTransmitter
-from components.lora_comm      import LoRaComm
 from components.oled_display   import OLEDDisplay
-from components.motor_controller import MotorController
 from components.stream_server  import StreamServer
 
 
@@ -36,12 +34,12 @@ class RobotState:
     battery_voltage:  float = 0.0
     last_gate_code:   str   = "---"
     ir_transmitting:  bool  = False
-    lora_connected:   bool  = False
+    lora_connected:   bool  = False  # ESP32-n kezelt; itt csak megjelenítési célra
     # Debug mezők (böngészős debug UI)
     debug_annotation: bool         = False
     vision_state:     str          = "WAIT_FOR_F"
     last_digit:       Optional[int] = None
-    motor_speeds:     List[float]  = field(default_factory=lambda: [0.0, 0.0, 0.0, 0.0])
+    motor_speeds:     List[float]  = field(default_factory=lambda: [0.0, 0.0, 0.0, 0.0])  # ESP32-n kezelt; itt csak megjelenítési célra
     ir_last_code:     str          = "---"
     ir_tx_count:      int          = 0
 
@@ -84,15 +82,12 @@ async def main(args: argparse.Namespace) -> None:
 
     # ── Kommunikációs queue-k ──────────────────────────────────────────────
     gate_code_queue: asyncio.Queue = asyncio.Queue(maxsize=10)
-    command_queue:   asyncio.Queue = asyncio.Queue(maxsize=50)
 
     # ── Komponensek inicializálása ─────────────────────────────────────────
     camera = CameraManager()
     vision = VisionProcessor()
     ir     = IRTransmitter()
-    lora   = LoRaComm()
     oled   = OLEDDisplay()
-    motor  = MotorController()
     stream = StreamServer()
 
     await camera.start()
@@ -103,14 +98,10 @@ async def main(args: argparse.Namespace) -> None:
                             name="vision"),
         asyncio.create_task(ir.transmit_loop(gate_code_queue, state),
                             name="ir"),
-        asyncio.create_task(lora.receive_loop(command_queue, state),
-                            name="lora"),
-        asyncio.create_task(motor.command_loop(command_queue, state),
-                            name="motor"),
         asyncio.create_task(oled.update_loop(state),
                             name="oled"),
         asyncio.create_task(
-            stream.serve(camera, state, vision, motor, ir,
+            stream.serve(camera, state, vision, ir,
                          enable_test_ui=args.test_ui),
             name="stream",
         ),
@@ -143,7 +134,6 @@ async def main(args: argparse.Namespace) -> None:
             t.cancel()
         await asyncio.gather(*tasks, return_exceptions=True)
         await camera.stop()
-        motor.cleanup()
         log.info("Robot leállítva.")
 
 
