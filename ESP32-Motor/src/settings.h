@@ -1,24 +1,26 @@
 #pragma once
 
 // ── LoRa UART beállítások ──────────────────────────────────────────────────
-#define LORA_UART_PORT  2       // HardwareSerial port száma
-#define LORA_UART_TX    17      // TX GPIO
-#define LORA_UART_RX    16      // RX GPIO
+// ESP32-S3 DevKitC: GPIO1=TX, GPIO3=RX (fejléc TX/RX lábak)
+// Debug kimenet: USB-CDC (Serial, GPIO19/20 — natív USB)
+#define LORA_UART_PORT  1       // HardwareSerial(1) — UART1, szabad a TX/RX lábakra
+#define LORA_UART_TX    1       // GPIO1 = TX fejléc láb
+#define LORA_UART_RX    3       // GPIO3 = RX fejléc láb
 #define LORA_UART_BAUD  115200  // Baud rate
 
-// ── Motor GPIO kiosztás (ESP32-safe: nem strapping, nem input-only) ────────
-// Elülső bal (FL)
-#define FL_IN1  25
-#define FL_IN2  26
-// Elülső jobb (FR)
-#define FR_IN1  27
-#define FR_IN2  14
-// Hátsó bal (RL)
-#define RL_IN1  18
-#define RL_IN2  19
-// Hátsó jobb (RR)
-#define RR_IN1  22
-#define RR_IN2  23
+// ── Motor GPIO kiosztás (2× DRV8833, ESP32-S3 DevKitC N16R8) ─────────────
+// Elülső bal (Front Left)
+#define LEFT_FRONT_FWD   4
+#define LEFT_FRONT_REV   5
+// Hátsó bal (Back Left)
+#define LEFT_REAR_FWD    6
+#define LEFT_REAR_REV    7
+// Elülső jobb (Front Right)
+#define RIGHT_FRONT_FWD  15
+#define RIGHT_FRONT_REV  16
+// Hátsó jobb (Back Right)
+#define RIGHT_REAR_FWD   17
+#define RIGHT_REAR_REV   18
 
 // ── Motor PWM beállítások ──────────────────────────────────────────────────
 #define MOTOR_PWM_FREQ  1000    // PWM frekvencia Hz-ben

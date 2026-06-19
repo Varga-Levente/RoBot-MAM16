@@ -4,20 +4,13 @@
 #include <ArduinoJson.h>
 #include <math.h>
 
-// Motor pin párok: {IN1, IN2}
+// Motor pin párok: {FWD, REV}
+// Sorrend: 0=FL, 1=FR, 2=RL, 3=RR (Mecanum számításhoz)
 static const int MOTOR_PINS[4][2] = {
-    {FL_IN1, FL_IN2},  // 0: Elülső bal (FL)
-    {FR_IN1, FR_IN2},  // 1: Elülső jobb (FR)
-    {RL_IN1, RL_IN2},  // 2: Hátsó bal (RL)
-    {RR_IN1, RR_IN2},  // 3: Hátsó jobb (RR)
-};
-
-// LEDC csatornák (2 csatorna/motor)
-static const int LEDC_CHANNELS[4][2] = {
-    {0, 1},
-    {2, 3},
-    {4, 5},
-    {6, 7},
+    {LEFT_FRONT_FWD,  LEFT_FRONT_REV},   // 0: Elülső bal  (FL)
+    {RIGHT_FRONT_FWD, RIGHT_FRONT_REV},  // 1: Elülső jobb (FR)
+    {LEFT_REAR_FWD,   LEFT_REAR_REV},    // 2: Hátsó bal   (RL)
+    {RIGHT_REAR_FWD,  RIGHT_REAR_REV},   // 3: Hátsó jobb  (RR)
 };
 
 void MotorController::init()
@@ -27,18 +20,15 @@ void MotorController::init()
         _speeds[i] = 0.0f;
     }
 
-    // GPIO és LEDC csatornák inicializálása
+    // LEDC inicializálása az új ESP32 Arduino 3.x API-val (ledcAttach per pin)
     for (int i = 0; i < 4; i++) {
-        for (int j = 0; j < 2; j++) {
-            int pin = MOTOR_PINS[i][j];
-            int ch  = LEDC_CHANNELS[i][j];
-            ledcSetup(ch, MOTOR_PWM_FREQ, MOTOR_PWM_RES);
-            ledcAttachPin(pin, ch);
-            ledcWrite(ch, 0);
-        }
+        ledcAttach(MOTOR_PINS[i][0], MOTOR_PWM_FREQ, MOTOR_PWM_RES);
+        ledcAttach(MOTOR_PINS[i][1], MOTOR_PWM_FREQ, MOTOR_PWM_RES);
+        ledcWrite(MOTOR_PINS[i][0], 0);
+        ledcWrite(MOTOR_PINS[i][1], 0);
     }
 
-    Serial.println("[Motor] Inicializálva.");
+    Serial.println("[Motor] Inicializálva (ESP32-S3, 4× Mecanum).");
 }
 
 void MotorController::setMotor(int id, float speed)
@@ -52,19 +42,19 @@ void MotorController::setMotor(int id, float speed)
     _speeds[id] = speed;
 
     int duty = (int)(fabsf(speed) * 255.0f);
-    int ch_in1 = LEDC_CHANNELS[id][0];
-    int ch_in2 = LEDC_CHANNELS[id][1];
+    int pin_fwd = MOTOR_PINS[id][0];
+    int pin_rev = MOTOR_PINS[id][1];
 
     // DRV8833 PWM vezérlés
     if (speed > 0.0f) {
-        ledcWrite(ch_in1, duty);
-        ledcWrite(ch_in2, 0);
+        ledcWrite(pin_fwd, duty);
+        ledcWrite(pin_rev, 0);
     } else if (speed < 0.0f) {
-        ledcWrite(ch_in1, 0);
-        ledcWrite(ch_in2, duty);
+        ledcWrite(pin_fwd, 0);
+        ledcWrite(pin_rev, duty);
     } else {
-        ledcWrite(ch_in1, 0);
-        ledcWrite(ch_in2, 0);
+        ledcWrite(pin_fwd, 0);
+        ledcWrite(pin_rev, 0);
     }
 }
 
